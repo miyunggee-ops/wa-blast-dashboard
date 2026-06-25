@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WA Blast Dashboard</title>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; }
+.header { background: linear-gradient(135deg, #1a1f2e, #252d3d); padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #2a3448; }
+.header h1 { font-size: 18px; color: #fff; }
+.header h1 span { color: #25d366; }
+.status-badge { padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; }
+.status-badge.connected { background: #1a4731; color: #25d366; }
+.status-badge.qr { background: #3d3500; color: #ffd700; }
+.status-badge.disconnected { background: #3d1a1a; color: #ff6b6b; }
+.container { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 20px; max-width: 1400px; margin: 0 auto; }
+.card { background: #1a1f2e; border-radius: 12px; border: 1px solid #2a3448; overflow: hidden; }
+.card-header { padding: 14px 18px; background: #252d3d; border-bottom: 1px solid #2a3448; display: flex; align-items: center; gap: 8px; }
+.card-header h2 { font-size: 14px; font-weight: 600; color: #fff; }
+.card-body { padding: 18px; }
+.qr-wrap { text-align: center; padding: 20px; }
+.qr-wrap img { width: 220px; height: 220px; border-radius: 12px; background: #fff; padding: 8px; }
+.qr-wrap p { margin-top: 12px; color: #aaa; font-size: 13px; }
+.connected-info { text-align: center; padding: 30px 20px; }
+.connected-info .icon { font-size: 48px; }
+.connected-info p { color: #25d366; font-size: 16px; font-weight: 600; margin-top: 8px; }
+.connected-info small { color: #aaa; font-size: 12px; }
+.form-group { margin-bottom: 14px; }
+.form-group label { display: block; font-size: 12px; color: #aaa; margin-bottom: 6px; font-weight: 500; }
+.form-group textarea { width: 100%; background: #0f1117; border: 1px solid #2a3448; border-radius: 8px; color: #e0e0e0; padding: 10px 12px; font-size: 13px; resize: vertical; font-family: inherit; }
+.form-group textarea:focus { outline: none; border-color: #25d366; }
+.nomor-count { font-size: 11px; color: #666; margin-top: 4px; }
+.btn { padding: 10px 20px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; width: 100%; }
+.btn-blast { background: #25d366; color: #000; }
+.btn-blast:hover { background: #20bb5a; }
+.btn-blast:disabled { background: #1a4731; color: #25d366; cursor: not-allowed; opacity: 0.6; }
+.btn-stop { background: #ff4757; color: #fff; margin-top: 8px; }
+.btn-reset { background: #2a3448; color: #aaa; font-size: 12px; padding: 7px 14px; width: auto; }
+.btn-reset:hover { background: #3a4560; }
+.progress-bar-wrap { background: #0f1117; border-radius: 6px; height: 8px; margin: 14px 0; overflow: hidden; }
+.progress-bar { height: 100%; background: linear-gradient(90deg, #25d366, #128c7e); border-radius: 6px; transition: width 0.3s; width: 0%; }
+.progress-stats { display: flex; gap: 16px; margin-bottom: 14px; }
+.stat-box { flex: 1; background: #0f1117; border-radius: 8px; padding: 10px; text-align: center; }
+.stat-box .num { font-size: 22px; font-weight: 700; }
+.stat-box .lbl { font-size: 11px; color: #666; margin-top: 2px; }
+.stat-box.sukses .num { color: #25d366; }
+.stat-box.gagal .num { color: #ff6b6b; }
+.stat-box.total .num { color: #fff; }
+.log-list { max-height: 220px; overflow-y: auto; }
+.log-item { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid #1a1f2e; font-size: 12px; }
+.log-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.log-dot.sukses { background: #25d366; }
+.log-dot.gagal { background: #ff6b6b; }
+.log-no { color: #fff; font-weight: 500; flex: 1; }
+.log-status.sukses { color: #25d366; font-size: 11px; }
+.log-status.gagal { color: #ff6b6b; font-size: 11px; }
+.inbox-list { max-height: 400px; overflow-y: auto; }
+.inbox-item { padding: 12px; background: #0f1117; border-radius: 8px; margin-bottom: 8px; border-left: 3px solid #25d366; }
+.inbox-from { font-size: 13px; font-weight: 600; color: #25d366; }
+.inbox-text { font-size: 13px; color: #ccc; margin-top: 4px; line-height: 1.4; }
+.inbox-time { font-size: 11px; color: #444; margin-top: 4px; }
+.empty-state { text-align: center; padding: 30px; color: #444; font-size: 13px; }
+.badge { display: inline-block; background: #25d366; color: #000; border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: 700; }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-thumb { background: #2a3448; border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🟢 <span>WA Blast</span> Dashboard</h1>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <span id="statusBadge" class="status-badge disconnected">⏳ Menghubungkan...</span>
+    <button class="btn btn-reset" onclick="resetSesi()">🔄 Reset Sesi</button>
+  </div>
+</div>
+<div class="container">
+  <div class="card">
+    <div class="card-header"><span>📱</span><h2>Status WhatsApp</h2></div>
+    <div class="card-body">
+      <div id="qrSection" class="qr-wrap" style="display:none;">
+        <img id="qrImage" src="" alt="QR Code">
+        <p>Buka WA → Perangkat Tertaut → Scan QR</p>
+      </div>
+      <div id="connectedSection" class="connected-info" style="display:none;">
+        <div class="icon">✅</div>
+        <p id="connectedMsg">Terhubung</p>
+        <small>Siap untuk blast</small>
+      </div>
+      <div id="loadingSection" class="connected-info">
+        <div class="icon">⏳</div>
+        <p style="color:#aaa;">Menghubungkan ke WhatsApp...</p>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span>🚀</span><h2>Kirim Blast</h2></div>
+    <div class="card-body">
+      <div class="form-group">
+        <label>NOMOR TUJUAN (satu per baris, awali 62)</label>
+        <textarea id="inputNomor" rows="4" placeholder="6281234567890" oninput="hitungNomor()"></textarea>
+        <div class="nomor-count" id="nomorCount">0 nomor</div>
+      </div>
+      <div class="form-group">
+        <label>PESAN</label>
+        <textarea id="inputPesan" rows="6">Halo kak! 👋
+
+Perkenalkan layanan kami untuk kebutuhan kamu.
+💬 Fast response, sat set, no ribet.
+📩 Balas pesan ini untuk info lebih lanjut!</textarea>
+      </div>
+      <button class="btn btn-blast" id="btnBlast" onclick="mulaiBlast()">🚀 Mulai Blast</button>
+      <button class="btn btn-stop" id="btnStop" onclick="stopBlast()" style="display:none;">⏹ Stop Blast</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span>📊</span><h2>Progress Blast</h2><span id="blastBadge" class="badge" style="display:none;">LIVE</span></div>
+    <div class="card-body">
+      <div class="progress-stats">
+        <div class="stat-box total"><div class="num" id="statTotal">0</div><div class="lbl">Total</div></div>
+        <div class="stat-box sukses"><div class="num" id="statSukses">0</div><div class="lbl">Sukses</div></div>
+        <div class="stat-box gagal"><div class="num" id="statGagal">0</div><div class="lbl">Gagal</div></div>
+      </div>
+      <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar"></div></div>
+      <div class="log-list" id="logList"><div class="empty-state">Belum ada blast berjalan</div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span>💬</span><h2>Inbox Balasan</h2><span id="inboxBadge" class="badge" style="display:none;">0</span></div>
+    <div class="card-body">
+      <div class="inbox-list" id="inboxList"><div class="empty-state">Belum ada balasan masuk</div></div>
+    </div>
+  </div>
+</div>
+<script>
+const socket = io();
+let suksesBlast = 0, gagalBlast = 0, inboxCount = 0;
+
+socket.on('status', ({ status, msg }) => {
+    const badge = document.getElementById('statusBadge');
+    badge.className = `status-badge ${status}`;
+    if (status === 'connected') {
+        badge.textContent = '🟢 ' + msg;
+        document.getElementById('loadingSection').style.display = 'none';
+        document.getElementById('qrSection').style.display = 'none';
+        document.getElementById('connectedSection').style.display = 'block';
+        document.getElementById('connectedMsg').textContent = msg;
+        document.getElementById('btnBlast').disabled = false;
+    } else if (status === 'qr') {
+        badge.textContent = '🟡 Scan QR';
+        document.getElementById('loadingSection').style.display = 'none';
+        document.getElementById('connectedSection').style.display = 'none';
+        document.getElementById('qrSection').style.display = 'block';
+        document.getElementById('btnBlast').disabled = true;
+    } else {
+        badge.textContent = '🔴 ' + msg;
+        document.getElementById('loadingSection').style.display = 'block';
+        document.getElementById('qrSection').style.display = 'none';
+        document.getElementById('connectedSection').style.display = 'none';
+        document.getElementById('btnBlast').disabled = true;
+    }
+});
+
+socket.on('qr', (qrImage) => {
+    if (qrImage) {
+        document.getElementById('qrImage').src = qrImage;
+        document.getElementById('qrSection').style.display = 'block';
+        document.getElementById('loadingSection').style.display = 'none';
+    }
+});
+
+socket.on('blast-start', ({ total }) => {
+    suksesBlast = 0; gagalBlast = 0;
+    document.getElementById('statTotal').textContent  = total;
+    document.getElementById('statSukses').textContent = 0;
+    document.getElementById('statGagal').textContent  = 0;
+    document.getElementById('progressBar').style.width = '0%';
+    document.getElementById('logList').innerHTML = '';
+    document.getElementById('blastBadge').style.display = 'inline-block';
+    document.getElementById('btnBlast').style.display = 'none';
+    document.getElementById('btnStop').style.display  = 'block';
+});
+
+socket.on('blast-progress', ({ no, status, index, total }) => {
+    if (status === 'sukses') suksesBlast++; else gagalBlast++;
+    document.getElementById('statSukses').textContent = suksesBlast;
+    document.getElementById('statGagal').textContent  = gagalBlast;
+    document.getElementById('progressBar').style.width = Math.round((index/total)*100) + '%';
+    const item = document.createElement('div');
+    item.className = 'log-item';
+    item.innerHTML = `<div class="log-dot ${status}"></div><div class="log-no">${no}</div><div class="log-status ${status}">${status==='sukses'?'✅ Terkirim':'❌ Gagal'}</div><div style="color:#444;font-size:11px">[${index}/${total}]</div>`;
+    document.getElementById('logList').prepend(item);
+});
+
+socket.on('blast-done', ({ total, sukses, gagal }) => {
+    document.getElementById('blastBadge').style.display = 'none';
+    document.getElementById('btnBlast').style.display = 'block';
+    document.getElementById('btnStop').style.display  = 'none';
+    document.getElementById('btnBlast').disabled = false;
+    alert(`🎉 Blast selesai!\n✅ Sukses: ${sukses}\n❌ Gagal: ${gagal}\n📊 Total: ${total}`);
+});
+
+socket.on('blast-stopped', () => {
+    document.getElementById('blastBadge').style.display = 'none';
+    document.getElementById('btnBlast').style.display = 'block';
+    document.getElementById('btnStop').style.display  = 'none';
+    document.getElementById('btnBlast').disabled = false;
+});
+
+socket.on('inbox', (item) => {
+    addInboxItem(item);
+    inboxCount++;
+    const badge = document.getElementById('inboxBadge');
+    badge.style.display = 'inline-block';
+    badge.textContent = inboxCount;
+});
+
+socket.on('inbox-all', (items) => {
+    if (!items.length) return;
+    document.getElementById('inboxList').innerHTML = '';
+    items.forEach(addInboxItem);
+    inboxCount = items.length;
+    const badge = document.getElementById('inboxBadge');
+    badge.style.display = 'inline-block';
+    badge.textContent = inboxCount;
+});
+
+function addInboxItem(item) {
+    const list = document.getElementById('inboxList');
+    const empty = list.querySelector('.empty-state');
+    if (empty) empty.remove();
+    const el = document.createElement('div');
+    el.className = 'inbox-item';
+    el.innerHTML = `<div class="inbox-from">📱 ${item.from}</div><div class="inbox-text">${item.text}</div><div class="inbox-time">${item.time}</div>`;
+    list.prepend(el);
+}
+
+async function mulaiBlast() {
+    const nomor = document.getElementById('inputNomor').value.trim();
+    const pesan = document.getElementById('inputPesan').value.trim();
+    if (!nomor) return alert('Isi nomor tujuan dulu!');
+    if (!pesan) return alert('Isi pesan dulu!');
+    const res  = await fetch('/api/blast', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nomor, pesan }) });
+    const data = await res.json();
+    if (!data.success) alert('❌ ' + data.error);
+}
+
+async function stopBlast() {
+    await fetch('/api/blast/stop', { method: 'POST' });
+}
+
+async function resetSesi() {
+    if (!confirm('Reset sesi WA? Kamu perlu scan QR ulang.')) return;
+    const res  = await fetch('/api/reset-sesi', { method: 'POST' });
+    const data = await res.json();
+    alert(data.msg || data.error);
+}
+
+function hitungNomor() {
+    const lines = document.getElementById('inputNomor').value.split('\n').map(n => n.trim()).filter(n => /^62\d{8,13}$/.test(n));
+    document.getElementById('nomorCount').textContent = lines.length + ' nomor valid';
+}
+
+document.getElementById('btnBlast').disabled = true;
+</script>
+</body>
+</html>
