@@ -1,0 +1,15 @@
+[
+  {
+    "id": "admin-001",
+    "username": "admin",
+    "password": "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lh31",
+    "role": "admin",
+    "licenseKey": "ADMIN-FREE-FOREVER",
+    "licenseActive": true,
+    "licenseExpiry": null,
+    "quotaHarian": 999999,
+    "quotaTerpakai": 0,
+    "lastReset": "",
+    "createdAt": "2026-01-01T00:00:00.000Z"
+  }
+]
