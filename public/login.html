@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WA Blast — Login</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+.wrap { width: 100%; max-width: 400px; padding: 24px; }
+.logo { text-align: center; margin-bottom: 32px; }
+.logo h1 { font-size: 24px; color: #fff; }
+.logo h1 span { color: #25d366; }
+.logo p { color: #666; font-size: 13px; margin-top: 6px; }
+.card { background: #1a1f2e; border-radius: 16px; border: 1px solid #2a3448; padding: 28px; }
+.tabs { display: flex; margin-bottom: 24px; border-bottom: 1px solid #2a3448; }
+.tab { flex: 1; text-align: center; padding: 10px; font-size: 13px; font-weight: 600; cursor: pointer; color: #666; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all 0.2s; }
+.tab.active { color: #25d366; border-bottom-color: #25d366; }
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-size: 12px; color: #aaa; margin-bottom: 6px; font-weight: 500; }
+.form-group input { width: 100%; background: #0f1117; border: 1px solid #2a3448; border-radius: 8px; color: #e0e0e0; padding: 10px 12px; font-size: 14px; }
+.form-group input:focus { outline: none; border-color: #25d366; }
+.btn { width: 100%; padding: 12px; border-radius: 8px; border: none; font-size: 14px; font-weight: 700; cursor: pointer; background: #25d366; color: #000; transition: background 0.2s; }
+.btn:hover { background: #20bb5a; }
+.msg { margin-top: 14px; text-align: center; font-size: 13px; padding: 10px; border-radius: 8px; display: none; }
+.msg.success { background: #1a4731; color: #25d366; }
+.msg.error { background: #3d1a1a; color: #ff6b6b; }
+.panel { display: none; }
+.panel.active { display: block; }
+.license-note { text-align: center; margin-top: 18px; font-size: 12px; color: #444; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo">
+    <h1>🟢 <span>WA Blast</span></h1>
+    <p>Multi-user WhatsApp Blast Tool</p>
+  </div>
+  <div class="card">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('login')">Login</div>
+      <div class="tab" onclick="switchTab('register')">Daftar</div>
+    </div>
+    <!-- Login -->
+    <div id="panelLogin" class="panel active">
+      <div class="form-group">
+        <label>USERNAME</label>
+        <input type="text" id="loginUser" placeholder="username" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label>PASSWORD</label>
+        <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <button class="btn" onclick="doLogin()">🔐 Masuk</button>
+      <div id="msgLogin" class="msg"></div>
+    </div>
+    <!-- Register -->
+    <div id="panelRegister" class="panel">
+      <div class="form-group">
+        <label>USERNAME</label>
+        <input type="text" id="regUser" placeholder="username baru">
+      </div>
+      <div class="form-group">
+        <label>PASSWORD</label>
+        <input type="password" id="regPass" placeholder="min. 6 karakter">
+      </div>
+      <button class="btn" onclick="doRegister()">📝 Buat Akun</button>
+      <div id="msgRegister" class="msg"></div>
+    </div>
+    <div class="license-note">Setelah login, aktifkan lisensi untuk mulai blast</div>
+  </div>
+</div>
+<script>
+function switchTab(t) {
+    document.querySelectorAll('.tab').forEach((el, i) => el.classList.toggle('active', (i===0&&t==='login')||(i===1&&t==='register')));
+    document.getElementById('panelLogin').classList.toggle('active', t==='login');
+    document.getElementById('panelRegister').classList.toggle('active', t==='register');
+}
+async function doLogin() {
+    const username = document.getElementById('loginUser').value.trim();
+    const password = document.getElementById('loginPass').value;
+    const msg = document.getElementById('msgLogin');
+    msg.style.display = 'none';
+    if (!username || !password) { showMsg(msg, 'error', 'Isi username & password!'); return; }
+    const res  = await fetch('/api/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ username, password }) });
+    const data = await res.json();
+    if (data.success) { window.location.href = '/dashboard'; }
+    else showMsg(msg, 'error', data.error);
+}
+async function doRegister() {
+    const username = document.getElementById('regUser').value.trim();
+    const password = document.getElementById('regPass').value;
+    const msg = document.getElementById('msgRegister');
+    msg.style.display = 'none';
+    if (!username || !password) { showMsg(msg, 'error', 'Isi semua field!'); return; }
+    if (password.length < 6) { showMsg(msg, 'error', 'Password min. 6 karakter!'); return; }
+    const res  = await fetch('/api/register', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ username, password }) });
+    const data = await res.json();
+    if (data.success) { showMsg(msg, 'success', data.msg); setTimeout(() => switchTab('login'), 2000); }
+    else showMsg(msg, 'error', data.error);
+}
+function showMsg(el, type, text) {
+    el.className = `msg ${type}`;
+    el.textContent = text;
+    el.style.display = 'block';
+}
+document.addEventListener('keydown', e => { if (e.key==='Enter') { if (document.getElementById('panelLogin').classList.contains('active')) doLogin(); else doRegister(); } });
+</script>
+</body>
+</html>

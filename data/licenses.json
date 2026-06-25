@@ -1,0 +1,20 @@
+[
+  {
+    "key": "STARTER-DEMO-2026",
+    "plan": "Starter",
+    "quotaHarian": 500,
+    "durasiHari": 30,
+    "usedBy": null,
+    "usedAt": null,
+    "createdAt": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "key": "PRO-DEMO-2026",
+    "plan": "Pro",
+    "quotaHarian": 2000,
+    "durasiHari": 30,
+    "usedBy": null,
+    "usedAt": null,
+    "createdAt": "2026-01-01T00:00:00.000Z"
+  }
+]
