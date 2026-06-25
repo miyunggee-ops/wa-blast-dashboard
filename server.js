@@ -45,19 +45,26 @@ const upload = multer({
         if (['.txt', '.csv'].includes(ext)) cb(null, true);
         else cb(new Error('Hanya file .txt atau .csv'));
     },
-    limits: { fileSize: 2 * 1024 * 1024 } // max 2MB
+    limits: { fileSize: 2 * 1024 * 1024 }
 });
 
-// ─── Middleware ───────────────────────────────────────────────────────────────
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(session({
+// ─── Session middleware ───────────────────────────────────────────────────────
+const sessionMiddleware = session({
     secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    cookie: { maxAge: 24 * 60 * 60 * 1000 } // 24 jam
-}));
+    cookie: { maxAge: 24 * 60 * 60 * 1000 }
+});
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(sessionMiddleware);
 app.use('/dashboard', express.static(path.join(__dirname, 'public')));
+
+// Share session dengan Socket.IO
+io.use((socket, next) => {
+    sessionMiddleware(socket.request, {}, next);
+});
 
 // ─── Auth Middleware ──────────────────────────────────────────────────────────
 function requireLogin(req, res, next) {
@@ -73,7 +80,7 @@ function requireAdmin(req, res, next) {
 }
 
 // ─── Per-user WA session store ────────────────────────────────────────────────
-const sessions = {}; // { userId: { sock, status, isBlasting, blastLog, inbox, blastNumbers } }
+const sessions = {};
 
 function getUserSession(userId) {
     if (!sessions[userId]) {
@@ -89,7 +96,7 @@ function getUserSession(userId) {
     return sessions[userId];
 }
 
-// ─── Reset quota harian (cek per hari) ───────────────────────────────────────
+// ─── Reset quota harian ───────────────────────────────────────────────────────
 function cekResetQuota(user) {
     const hari = new Date().toDateString();
     if (user.lastReset !== hari) {
@@ -105,6 +112,9 @@ async function connectWA(userId) {
     const { version }          = await fetchLatestBaileysVersion();
     const { state, saveCreds } = await useMultiFileAuthState(sesiDir);
     const ses = getUserSession(userId);
+
+    // Jangan reconnect kalau sudah connected
+    if (ses.status === 'connected') return;
 
     ses.sock = makeWASocket({
         version,
@@ -227,6 +237,7 @@ app.get('/api/me', requireLogin, (req, res) => {
     const sisa = Math.max(0, u.quotaHarian - u.quotaTerpakai);
     res.json({
         success: true,
+        userId:         u.id,
         username:       u.username,
         role:           u.role,
         licenseActive:  u.licenseActive,
@@ -238,7 +249,7 @@ app.get('/api/me', requireLogin, (req, res) => {
     });
 });
 
-// ─── Routes: Lisensi ──────────────────────────────────────────────────────────
+// ─── Routes: Lisensi ─────────────────────────────────────────────────────────
 app.post('/api/aktivasi', requireLogin, (req, res) => {
     const { key } = req.body;
     if (!key) return res.json({ success: false, error: 'Key tidak boleh kosong!' });
@@ -266,7 +277,7 @@ app.post('/api/aktivasi', requireLogin, (req, res) => {
     res.json({ success: true, msg: `✅ Lisensi ${lic.plan} aktif! Berlaku ${lic.durasiHari} hari. Quota: ${lic.quotaHarian}/hari.` });
 });
 
-// ─── Routes: Admin ───────────────────────────────────────────────────────────
+// ─── Routes: Admin ────────────────────────────────────────────────────────────
 app.get('/api/admin/users', requireAdmin, (req, res) => {
     const users = readJSON('data/users.json').map(u => ({
         id: u.id, username: u.username, role: u.role,
@@ -318,7 +329,6 @@ app.post('/api/blast', requireLogin, async (req, res) => {
     if (!user) return res.json({ success: false, error: 'User tidak ditemukan!' });
     if (!user.licenseActive) return res.json({ success: false, error: 'Aktifkan lisensi dulu!' });
 
-    // cek expiry
     if (user.licenseExpiry && new Date() > new Date(user.licenseExpiry))
         return res.json({ success: false, error: 'Lisensi sudah expired! Perbarui lisensi kamu.' });
 
@@ -332,7 +342,6 @@ app.post('/api/blast', requireLogin, async (req, res) => {
     const allNomor = nomor.split('\n').map(n => n.trim()).filter(n => /^62\d{8,13}$/.test(n));
     if (allNomor.length === 0) return res.json({ success: false, error: 'Tidak ada nomor valid! Awali dengan 62.' });
 
-    // cek quota
     cekResetQuota(user);
     const sisa = user.quotaHarian - user.quotaTerpakai;
     if (sisa <= 0) return res.json({ success: false, error: `Quota harian habis! (${user.quotaHarian}/hari). Reset besok.` });
@@ -340,7 +349,11 @@ app.post('/api/blast', requireLogin, async (req, res) => {
     const blastNomor = allNomor.slice(0, sisa);
     ses.blastLog   = [];
     ses.isBlasting = true;
-    res.json({ success: true, total: blastNomor.length, catatan: blastNomor.length < allNomor.length ? `Hanya ${blastNomor.length} dari ${allNomor.length} (sisa quota)` : null });
+    res.json({
+        success: true,
+        total: blastNomor.length,
+        catatan: blastNomor.length < allNomor.length ? `Hanya ${blastNomor.length} dari ${allNomor.length} dikirim (sisa quota)` : null
+    });
     jalankanBlast(req.session.userId, pesan, blastNomor);
 });
 
@@ -396,7 +409,6 @@ async function jalankanBlast(userId, pesan, numbers) {
         try {
             await ses.sock.sendMessage(jid, { text: pesan });
             status = 'sukses';
-            // update quota
             const users = readJSON('data/users.json');
             const idx   = users.findIndex(u => u.id === userId);
             users[idx].quotaTerpakai = (users[idx].quotaTerpakai || 0) + 1;
@@ -419,16 +431,32 @@ async function jalankanBlast(userId, pesan, numbers) {
 
 // ─── Socket.IO ────────────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
-    socket.on('join', (userId) => {
+    // Ambil userId dari session yang sudah di-share
+    const userId = socket.request.session?.userId;
+    if (!userId) return;
+
+    // Masuk ke room user
+    socket.join(`user:${userId}`);
+
+    // Kirim state saat ini
+    const ses = getUserSession(userId);
+    socket.emit('status', {
+        status: ses.status,
+        msg: ses.status === 'connected'
+            ? `✅ Terhubung: ${ses.sock?.user?.id?.split(':')[0] || '-'}`
+            : ses.status === 'qr' ? 'Scan QR Code' : 'Menghubungkan...'
+    });
+    socket.emit('inbox-all', ses.inbox);
+
+    // Auto-start WA kalau belum connect
+    if (ses.status === 'disconnected') {
+        connectWA(userId);
+    }
+
+    // Handle join-me (fallback dari frontend)
+    socket.on('join-me', () => {
         socket.join(`user:${userId}`);
-        const ses = getUserSession(userId);
-        socket.emit('status', {
-            status: ses.status,
-            msg: ses.status === 'connected'
-                ? `✅ Terhubung: ${ses.sock?.user?.id?.split(':')[0] || '-'}`
-                : ses.status === 'qr' ? 'Scan QR Code' : 'Menghubungkan...'
-        });
-        socket.emit('inbox-all', ses.inbox);
+        if (ses.status === 'disconnected') connectWA(userId);
     });
 });
 
