@@ -1,0 +1,5 @@
+node_modules/
+sesi_dashboard/
+.env
+laporan_sukses.txt
+laporan_gagal.txt
