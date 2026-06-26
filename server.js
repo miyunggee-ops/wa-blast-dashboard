@@ -25,19 +25,48 @@ const io     = new Server(server);
 const PORT = process.env.PORT || 3000;
 const SESSION_SECRET = process.env.SESSION_SECRET || 'wa-blast-secret-2026';
 
-// ─── Pastikan folder & file data ada (seed saat pertama kali deploy) ──────────
-if (!fs.existsSync('data')) fs.mkdirSync('data', { recursive: true });
+// ─── ADMIN DEFAULT ────────────────────────────────────────────────────────────
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+
+// ─── Pastikan folder ada ──────────────────────────────────────────────────────
+if (!fs.existsSync('data'))    fs.mkdirSync('data',    { recursive: true });
 if (!fs.existsSync('uploads')) fs.mkdirSync('uploads', { recursive: true });
 
-// Seed users.json — buat akun admin default kalau belum ada
-if (!fs.existsSync('data/users.json')) {
-    // Hash: admin123
-    const adminHash = bcrypt.hashSync('admin123', 10);
-    fs.writeFileSync('data/users.json', JSON.stringify([
-        {
+// ─── Helper: baca/tulis JSON ──────────────────────────────────────────────────
+function readJSON(file) {
+    try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return []; }
+}
+function writeJSON(file, data) {
+    fs.writeFileSync(file, JSON.stringify(data, null, 2));
+}
+
+// ─── Seed / sync data saat startup ───────────────────────────────────────────
+function seedData() {
+    // --- users.json ---
+    let users = readJSON('data/users.json');
+
+    // Buat licenses.json kalau belum ada
+    if (!fs.existsSync('data/licenses.json')) {
+        writeJSON('data/licenses.json', [
+            { key: 'STARTER-DEMO-2026', plan: 'Starter', quotaHarian: 500,  durasiHari: 30, usedBy: null, usedAt: null, createdAt: new Date().toISOString() },
+            { key: 'PRO-DEMO-2026',     plan: 'Pro',     quotaHarian: 2000, durasiHari: 30, usedBy: null, usedAt: null, createdAt: new Date().toISOString() }
+        ]);
+        console.log('📌 data/licenses.json dibuat');
+    }
+
+    // Cek apakah admin sudah ada
+    const adminIdx = users.findIndex(u => u.id === 'admin-001' || u.username === ADMIN_USERNAME);
+
+    // Selalu hash ulang password admin dari env/default
+    const freshHash = bcrypt.hashSync(ADMIN_PASSWORD, 10);
+
+    if (adminIdx === -1) {
+        // Admin belum ada → buat baru
+        users.unshift({
             id:            'admin-001',
-            username:      'admin',
-            password:      adminHash,
+            username:      ADMIN_USERNAME,
+            password:      freshHash,
             role:          'admin',
             licenseKey:    'ADMIN-FREE-FOREVER',
             licenseActive: true,
@@ -47,43 +76,22 @@ if (!fs.existsSync('data/users.json')) {
             quotaTerpakai: 0,
             lastReset:     '',
             createdAt:     new Date().toISOString()
-        }
-    ], null, 2));
-    console.log('📌 data/users.json dibuat — login: admin / admin123');
+        });
+        console.log(`📌 Admin dibuat: ${ADMIN_USERNAME}`);
+    } else {
+        // Admin ada → update password & pastikan field lengkap
+        users[adminIdx].password      = freshHash;
+        users[adminIdx].role          = 'admin';
+        users[adminIdx].licenseActive = true;
+        users[adminIdx].quotaHarian   = 999999;
+        users[adminIdx].plan          = users[adminIdx].plan || 'Admin';
+        console.log(`📌 Password admin di-sync: ${ADMIN_USERNAME}`);
+    }
+
+    writeJSON('data/users.json', users);
 }
 
-// Seed licenses.json — isi demo key kalau belum ada
-if (!fs.existsSync('data/licenses.json')) {
-    fs.writeFileSync('data/licenses.json', JSON.stringify([
-        {
-            key:         'STARTER-DEMO-2026',
-            plan:        'Starter',
-            quotaHarian: 500,
-            durasiHari:  30,
-            usedBy:      null,
-            usedAt:      null,
-            createdAt:   new Date().toISOString()
-        },
-        {
-            key:         'PRO-DEMO-2026',
-            plan:        'Pro',
-            quotaHarian: 2000,
-            durasiHari:  30,
-            usedBy:      null,
-            usedAt:      null,
-            createdAt:   new Date().toISOString()
-        }
-    ], null, 2));
-    console.log('📌 data/licenses.json dibuat — demo keys tersedia');
-}
-
-// ─── Helper: baca/tulis JSON ──────────────────────────────────────────────────
-function readJSON(file) {
-    try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return []; }
-}
-function writeJSON(file, data) {
-    fs.writeFileSync(file, JSON.stringify(data, null, 2));
-}
+seedData();
 
 // ─── Multer upload ────────────────────────────────────────────────────────────
 const upload = multer({
@@ -132,14 +140,7 @@ const sessions = {};
 
 function getUserSession(userId) {
     if (!sessions[userId]) {
-        sessions[userId] = {
-            sock:         null,
-            status:       'disconnected',
-            isBlasting:   false,
-            blastLog:     [],
-            inbox:        [],
-            blastNumbers: []
-        };
+        sessions[userId] = { sock: null, status: 'disconnected', isBlasting: false, blastLog: [], inbox: [], blastNumbers: [] };
     }
     return sessions[userId];
 }
@@ -147,18 +148,13 @@ function getUserSession(userId) {
 // ─── Reset quota harian ───────────────────────────────────────────────────────
 function cekResetQuota(user) {
     const hari = new Date().toDateString();
-    if (user.lastReset !== hari) {
-        user.quotaTerpakai = 0;
-        user.lastReset     = hari;
-    }
+    if (user.lastReset !== hari) { user.quotaTerpakai = 0; user.lastReset = hari; }
     return user;
 }
 
 // ─── Connect WA per user ──────────────────────────────────────────────────────
 async function connectWA(userId) {
     const ses = getUserSession(userId);
-
-    // Jangan reconnect kalau sedang connecting atau sudah connected
     if (ses.status === 'connected' || ses.status === 'connecting') return;
     ses.status = 'connecting';
 
@@ -167,26 +163,20 @@ async function connectWA(userId) {
     const { state, saveCreds } = await useMultiFileAuthState(sesiDir);
 
     ses.sock = makeWASocket({
-        version,
-        auth:              state,
-        printQRInTerminal: false,
-        logger:            pino({ level: 'silent' }),
-        browser:           Browsers.ubuntu('Chrome'),
-        syncFullHistory:   false,
+        version, auth: state, printQRInTerminal: false,
+        logger: pino({ level: 'silent' }), browser: Browsers.ubuntu('Chrome'), syncFullHistory: false,
     });
 
     ses.sock.ev.on('creds.update', saveCreds);
 
     ses.sock.ev.on('connection.update', async (update) => {
         const { connection, qr, lastDisconnect } = update;
-
         if (qr) {
             ses.status = 'qr';
             const qrImage = await qrcode.toDataURL(qr);
             io.to(`user:${userId}`).emit('qr', qrImage);
             io.to(`user:${userId}`).emit('status', { status: 'qr', msg: 'Scan QR Code di bawah' });
         }
-
         if (connection === 'close') {
             ses.status = 'disconnected';
             const kode = lastDisconnect?.error?.output?.statusCode;
@@ -197,7 +187,6 @@ async function connectWA(userId) {
                 setTimeout(() => connectWA(userId), 5000);
             }
         }
-
         if (connection === 'open') {
             ses.status = 'connected';
             const nomorWA = ses.sock.user?.id?.split(':')[0] || '-';
@@ -211,10 +200,7 @@ async function connectWA(userId) {
         for (const msg of messages) {
             if (msg.key.fromMe) continue;
             const from = msg.key.remoteJid?.replace('@s.whatsapp.net', '') || '';
-            const text = msg.message?.conversation
-                      || msg.message?.extendedTextMessage?.text
-                      || msg.message?.imageMessage?.caption
-                      || '[Media]';
+            const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || msg.message?.imageMessage?.caption || '[Media]';
             const time = new Date().toLocaleTimeString('id-ID');
             const item = { from, text, time };
             ses.inbox.unshift(item);
@@ -229,7 +215,6 @@ app.get('/', (req, res) => {
     if (req.session.userId) return res.redirect('/dashboard');
     res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
-
 app.get('/dashboard', (req, res) => {
     if (!req.session.userId) return res.redirect('/');
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -239,24 +224,9 @@ app.post('/api/register', async (req, res) => {
     const { username, password } = req.body;
     if (!username || !password) return res.json({ success: false, error: 'Username & password wajib diisi!' });
     const users = readJSON('data/users.json');
-    if (users.find(u => u.username === username))
-        return res.json({ success: false, error: 'Username sudah dipakai!' });
+    if (users.find(u => u.username === username)) return res.json({ success: false, error: 'Username sudah dipakai!' });
     const hashed  = await bcrypt.hash(password, 10);
-    const newUser = {
-        id:            uuidv4(),
-        username,
-        password:      hashed,
-        role:          'user',
-        licenseKey:    null,
-        licenseActive: false,
-        licenseExpiry: null,
-        plan:          null,
-        quotaHarian:   0,
-        quotaTerpakai: 0,
-        lastReset:     '',
-        createdAt:     new Date().toISOString()
-    };
-    users.push(newUser);
+    users.push({ id: uuidv4(), username, password: hashed, role: 'user', licenseKey: null, licenseActive: false, licenseExpiry: null, plan: null, quotaHarian: 0, quotaTerpakai: 0, lastReset: '', createdAt: new Date().toISOString() });
     writeJSON('data/users.json', users);
     res.json({ success: true, msg: 'Akun berhasil dibuat! Silakan login.' });
 });
@@ -274,10 +244,7 @@ app.post('/api/login', async (req, res) => {
     res.json({ success: true, role: user.role });
 });
 
-app.post('/api/logout', (req, res) => {
-    req.session.destroy();
-    res.json({ success: true });
-});
+app.post('/api/logout', (req, res) => { req.session.destroy(); res.json({ success: true }); });
 
 app.get('/api/me', requireLogin, (req, res) => {
     const users = readJSON('data/users.json');
@@ -285,19 +252,7 @@ app.get('/api/me', requireLogin, (req, res) => {
     if (!user) return res.json({ success: false });
     const u = cekResetQuota(user);
     writeJSON('data/users.json', users);
-    const sisa = Math.max(0, u.quotaHarian - u.quotaTerpakai);
-    res.json({
-        success:       true,
-        userId:        u.id,
-        username:      u.username,
-        role:          u.role,
-        licenseActive: u.licenseActive,
-        licenseExpiry: u.licenseExpiry,
-        plan:          u.plan || '-',
-        quotaHarian:   u.quotaHarian,
-        quotaTerpakai: u.quotaTerpakai,
-        sisaQuota:     sisa
-    });
+    res.json({ success: true, userId: u.id, username: u.username, role: u.role, licenseActive: u.licenseActive, licenseExpiry: u.licenseExpiry, plan: u.plan || '-', quotaHarian: u.quotaHarian, quotaTerpakai: u.quotaTerpakai, sisaQuota: Math.max(0, u.quotaHarian - u.quotaTerpakai) });
 });
 
 // ─── Routes: Lisensi ─────────────────────────────────────────────────────────
@@ -306,214 +261,125 @@ app.post('/api/aktivasi', requireLogin, (req, res) => {
     if (!key) return res.json({ success: false, error: 'Key tidak boleh kosong!' });
     const licenses = readJSON('data/licenses.json');
     const lic      = licenses.find(l => l.key === key.trim().toUpperCase());
-    if (!lic)      return res.json({ success: false, error: 'Key tidak ditemukan!' });
+    if (!lic)       return res.json({ success: false, error: 'Key tidak ditemukan!' });
     if (lic.usedBy) return res.json({ success: false, error: 'Key sudah dipakai!' });
-
     const users  = readJSON('data/users.json');
     const idx    = users.findIndex(u => u.id === req.session.userId);
-    const expiry = new Date();
-    expiry.setDate(expiry.getDate() + lic.durasiHari);
-
-    users[idx].licenseKey    = key;
-    users[idx].licenseActive = true;
-    users[idx].licenseExpiry = expiry.toISOString();
-    users[idx].quotaHarian   = lic.quotaHarian;
-    users[idx].plan          = lic.plan;
+    const expiry = new Date(); expiry.setDate(expiry.getDate() + lic.durasiHari);
+    users[idx] = { ...users[idx], licenseKey: key, licenseActive: true, licenseExpiry: expiry.toISOString(), quotaHarian: lic.quotaHarian, plan: lic.plan };
     writeJSON('data/users.json', users);
-
-    lic.usedBy = req.session.userId;
-    lic.usedAt = new Date().toISOString();
+    lic.usedBy = req.session.userId; lic.usedAt = new Date().toISOString();
     writeJSON('data/licenses.json', licenses);
-
     res.json({ success: true, msg: `✅ Lisensi ${lic.plan} aktif! Berlaku ${lic.durasiHari} hari. Quota: ${lic.quotaHarian}/hari.` });
 });
 
 // ─── Routes: Admin ────────────────────────────────────────────────────────────
 app.get('/api/admin/users', requireAdmin, (req, res) => {
-    const users = readJSON('data/users.json').map(u => ({
-        id:            u.id,
-        username:      u.username,
-        role:          u.role,
-        plan:          u.plan || '-',
-        licenseActive: u.licenseActive,
-        licenseExpiry: u.licenseExpiry,
-        quotaHarian:   u.quotaHarian,
-        quotaTerpakai: u.quotaTerpakai,
-        createdAt:     u.createdAt
-    }));
-    res.json(users);
+    res.json(readJSON('data/users.json').map(u => ({ id: u.id, username: u.username, role: u.role, plan: u.plan || '-', licenseActive: u.licenseActive, licenseExpiry: u.licenseExpiry, quotaHarian: u.quotaHarian, quotaTerpakai: u.quotaTerpakai, createdAt: u.createdAt })));
 });
 
 app.post('/api/admin/generate-key', requireAdmin, (req, res) => {
     const { plan, quotaHarian, durasiHari } = req.body;
-    if (!plan || !quotaHarian || !durasiHari)
-        return res.json({ success: false, error: 'Lengkapi semua field!' });
+    if (!plan || !quotaHarian || !durasiHari) return res.json({ success: false, error: 'Lengkapi semua field!' });
     const key      = `${plan.toUpperCase()}-${uuidv4().slice(0, 8).toUpperCase()}`;
     const licenses = readJSON('data/licenses.json');
-    licenses.push({
-        key,
-        plan,
-        quotaHarian: parseInt(quotaHarian),
-        durasiHari:  parseInt(durasiHari),
-        usedBy:      null,
-        usedAt:      null,
-        createdAt:   new Date().toISOString()
-    });
+    licenses.push({ key, plan, quotaHarian: parseInt(quotaHarian), durasiHari: parseInt(durasiHari), usedBy: null, usedAt: null, createdAt: new Date().toISOString() });
     writeJSON('data/licenses.json', licenses);
     res.json({ success: true, key, msg: `Key baru: ${key}` });
 });
 
-app.get('/api/admin/licenses', requireAdmin, (req, res) => {
-    res.json(readJSON('data/licenses.json'));
-});
+app.get('/api/admin/licenses', requireAdmin, (req, res) => res.json(readJSON('data/licenses.json')));
 
 // ─── Routes: WA ──────────────────────────────────────────────────────────────
-app.get('/api/status', requireLogin, (req, res) => {
-    const ses = getUserSession(req.session.userId);
-    res.json({ status: ses.status, nomor: ses.sock?.user?.id?.split(':')[0] || '-' });
-});
-
+app.get('/api/status',    requireLogin, (req, res) => { const ses = getUserSession(req.session.userId); res.json({ status: ses.status, nomor: ses.sock?.user?.id?.split(':')[0] || '-' }); });
 app.get('/api/inbox',     requireLogin, (req, res) => res.json(getUserSession(req.session.userId).inbox));
 app.get('/api/blast-log', requireLogin, (req, res) => res.json(getUserSession(req.session.userId).blastLog));
 
 app.post('/api/blast', requireLogin, async (req, res) => {
     const users = readJSON('data/users.json');
     const user  = users.find(u => u.id === req.session.userId);
-    if (!user)             return res.json({ success: false, error: 'User tidak ditemukan!' });
+    if (!user)              return res.json({ success: false, error: 'User tidak ditemukan!' });
     if (!user.licenseActive) return res.json({ success: false, error: 'Aktifkan lisensi dulu!' });
-    if (user.licenseExpiry && new Date() > new Date(user.licenseExpiry))
-        return res.json({ success: false, error: 'Lisensi sudah expired! Perbarui lisensi kamu.' });
-
+    if (user.licenseExpiry && new Date() > new Date(user.licenseExpiry)) return res.json({ success: false, error: 'Lisensi expired!' });
     const ses = getUserSession(req.session.userId);
     if (ses.status !== 'connected') return res.json({ success: false, error: 'WA belum terhubung!' });
     if (ses.isBlasting)             return res.json({ success: false, error: 'Blast sedang berjalan!' });
-
     const { nomor, pesan } = req.body;
     if (!nomor || !pesan) return res.json({ success: false, error: 'Nomor dan pesan wajib diisi!' });
-
     const allNomor = nomor.split('\n').map(n => n.trim()).filter(n => /^62\d{8,13}$/.test(n));
-    if (allNomor.length === 0) return res.json({ success: false, error: 'Tidak ada nomor valid! Awali dengan 62.' });
-
+    if (!allNomor.length) return res.json({ success: false, error: 'Tidak ada nomor valid! Awali dengan 62.' });
     cekResetQuota(user);
     const sisa = user.quotaHarian - user.quotaTerpakai;
-    if (sisa <= 0) return res.json({ success: false, error: `Quota harian habis! (${user.quotaHarian}/hari). Reset besok.` });
-
+    if (sisa <= 0) return res.json({ success: false, error: `Quota harian habis! Reset besok.` });
     const blastNomor = allNomor.slice(0, sisa);
-    ses.blastLog     = [];
-    ses.isBlasting   = true;
-    res.json({
-        success: true,
-        total:   blastNomor.length,
-        catatan: blastNomor.length < allNomor.length
-            ? `Hanya ${blastNomor.length} dari ${allNomor.length} dikirim (sisa quota hari ini)`
-            : null
-    });
+    ses.blastLog = []; ses.isBlasting = true;
+    res.json({ success: true, total: blastNomor.length, catatan: blastNomor.length < allNomor.length ? `Hanya ${blastNomor.length} dari ${allNomor.length} dikirim (sisa quota)` : null });
     jalankanBlast(req.session.userId, pesan, blastNomor);
 });
 
 app.post('/api/blast/stop', requireLogin, (req, res) => {
-    const ses    = getUserSession(req.session.userId);
-    ses.isBlasting = false;
+    getUserSession(req.session.userId).isBlasting = false;
     io.to(`user:${req.session.userId}`).emit('blast-stopped', {});
     res.json({ success: true });
 });
 
 app.post('/api/reset-sesi', requireLogin, async (req, res) => {
-    const userId  = req.session.userId;
-    const ses     = getUserSession(userId);
-    const sesiDir = `sesi_${userId}`;
+    const userId = req.session.userId;
+    const ses    = getUserSession(userId);
     try {
         if (ses.sock) { try { ses.sock.end(); } catch(e) {} ses.sock = null; }
         ses.status = 'disconnected';
-        fs.rmSync(sesiDir, { recursive: true, force: true });
+        fs.rmSync(`sesi_${userId}`, { recursive: true, force: true });
         res.json({ success: true, msg: 'Sesi dihapus. Menghubungkan ulang...' });
         setTimeout(() => connectWA(userId), 1500);
-    } catch (e) {
-        res.json({ success: false, error: e.message });
-    }
+    } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
-// ─── Upload .txt / .csv ───────────────────────────────────────────────────────
 app.post('/api/upload-nomor', requireLogin, upload.single('file'), (req, res) => {
     try {
         const content = fs.readFileSync(req.file.path, 'utf8');
         fs.unlinkSync(req.file.path);
-        const lines  = content
-            .split(/[\n,;]+/)
-            .map(n => n.replace(/\D/g, ''))
-            .filter(n => /^62\d{8,13}$/.test(n));
-        const unique = [...new Set(lines)];
+        const unique = [...new Set(content.split(/[\n,;]+/).map(n => n.replace(/\D/g, '')).filter(n => /^62\d{8,13}$/.test(n)))];
         res.json({ success: true, nomor: unique, total: unique.length });
-    } catch (e) {
-        res.json({ success: false, error: e.message });
-    }
+    } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
 // ─── Blast worker ─────────────────────────────────────────────────────────────
 async function jalankanBlast(userId, pesan, numbers) {
-    const ses   = getUserSession(userId);
-    const total = numbers.length;
-    io.to(`user:${userId}`).emit('blast-start', { total });
-
+    const ses = getUserSession(userId);
+    io.to(`user:${userId}`).emit('blast-start', { total: numbers.length });
     for (let i = 0; i < numbers.length; i++) {
         if (!ses.isBlasting) break;
-        const no  = numbers[i];
-        const jid = `${no}@s.whatsapp.net`;
         let status = 'gagal';
         try {
-            await ses.sock.sendMessage(jid, { text: pesan });
+            await ses.sock.sendMessage(`${numbers[i]}@s.whatsapp.net`, { text: pesan });
             status = 'sukses';
-            // update quota hanya kalau sukses
             const users = readJSON('data/users.json');
             const idx   = users.findIndex(u => u.id === userId);
-            if (idx !== -1) {
-                users[idx].quotaTerpakai = (users[idx].quotaTerpakai || 0) + 1;
-                writeJSON('data/users.json', users);
-            }
+            if (idx !== -1) { users[idx].quotaTerpakai = (users[idx].quotaTerpakai || 0) + 1; writeJSON('data/users.json', users); }
         } catch (err) {}
-        const log = { no, status, index: i + 1, total, time: new Date().toLocaleTimeString('id-ID') };
+        const log = { no: numbers[i], status, index: i + 1, total: numbers.length, time: new Date().toLocaleTimeString('id-ID') };
         ses.blastLog.push(log);
         io.to(`user:${userId}`).emit('blast-progress', log);
-        if (i < numbers.length - 1 && ses.isBlasting) {
-            const jeda = Math.floor(Math.random() * (8000 - 4000 + 1)) + 4000;
-            await new Promise(r => setTimeout(r, jeda));
-        }
+        if (i < numbers.length - 1 && ses.isBlasting) await new Promise(r => setTimeout(r, Math.floor(Math.random() * 4000) + 4000));
     }
-
     ses.isBlasting = false;
-    const sukses = ses.blastLog.filter(l => l.status === 'sukses').length;
-    const gagal  = ses.blastLog.filter(l => l.status === 'gagal').length;
-    io.to(`user:${userId}`).emit('blast-done', { total, sukses, gagal });
+    io.to(`user:${userId}`).emit('blast-done', { total: numbers.length, sukses: ses.blastLog.filter(l => l.status === 'sukses').length, gagal: ses.blastLog.filter(l => l.status === 'gagal').length });
 }
 
 // ─── Socket.IO ────────────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
     const userId = socket.request.session?.userId;
     if (!userId) return;
-
     socket.join(`user:${userId}`);
-
     const ses = getUserSession(userId);
-    socket.emit('status', {
-        status: ses.status,
-        msg:    ses.status === 'connected'
-            ? `✅ Terhubung: ${ses.sock?.user?.id?.split(':')[0] || '-'}`
-            : ses.status === 'qr' ? 'Scan QR Code' : 'Menghubungkan...'
-    });
+    socket.emit('status', { status: ses.status, msg: ses.status === 'connected' ? `✅ Terhubung: ${ses.sock?.user?.id?.split(':')[0] || '-'}` : ses.status === 'qr' ? 'Scan QR Code' : 'Menghubungkan...' });
     socket.emit('inbox-all', ses.inbox);
-
-    // Auto-start WA kalau belum connect
-    if (ses.status === 'disconnected') {
-        connectWA(userId);
-    }
-
-    socket.on('join-me', () => {
-        socket.join(`user:${userId}`);
-        if (ses.status === 'disconnected') connectWA(userId);
-    });
+    if (ses.status === 'disconnected') connectWA(userId);
+    socket.on('join-me', () => { socket.join(`user:${userId}`); if (ses.status === 'disconnected') connectWA(userId); });
 });
 
 server.listen(PORT, () => {
     console.log(`\n🚀 WA Blast Dashboard v2 jalan di port ${PORT}`);
-    console.log(`📌 Login default: admin / admin123`);
+    console.log(`📌 Login: ${ADMIN_USERNAME} / ${ADMIN_PASSWORD}`);
 });
