@@ -18,12 +18,11 @@ body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0;
 .status-badge { padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
 .status-badge.connected { background: #1a4731; color: #25d366; }
 .status-badge.qr { background: #3d3500; color: #ffd700; }
-.status-badge.disconnected { background: #3d1a1a; color: #ff6b6b; }
+.status-badge.disconnected,.status-badge.connecting { background: #3d1a1a; color: #ff6b6b; }
 .btn-sm { padding: 6px 12px; border-radius: 6px; border: none; font-size: 12px; font-weight: 600; cursor: pointer; }
 .btn-logout { background: #2a3448; color: #aaa; }
 .btn-logout:hover { background: #3a4560; color: #fff; }
 .container { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 20px; max-width: 1400px; margin: 0 auto; }
-/* License banner */
 .license-banner { grid-column: 1/-1; background: #3d1a1a; border: 1px solid #ff4757; border-radius: 10px; padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .license-banner.active { background: #1a4731; border-color: #25d366; }
 .license-banner p { font-size: 13px; }
@@ -84,7 +83,6 @@ body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0;
 .inbox-time { font-size: 11px; color: #444; margin-top: 4px; }
 .empty-state { text-align: center; padding: 28px; color: #444; font-size: 13px; }
 .badge { display: inline-block; background: #25d366; color: #000; border-radius: 10px; padding: 1px 7px; font-size: 11px; font-weight: 700; }
-/* Admin panel */
 .admin-toggle { grid-column: 1/-1; text-align: right; }
 .admin-panel { grid-column: 1/-1; background: #1a1f2e; border-radius: 12px; border: 1px solid #ffd700; padding: 20px; display: none; }
 .admin-panel h3 { color: #ffd700; font-size: 14px; margin-bottom: 16px; }
@@ -113,7 +111,6 @@ body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0;
   </div>
 </div>
 <div class="container">
-  <!-- License Banner -->
   <div id="licenseBanner" class="license-banner">
     <p id="licenseMsg">⚠️ Lisensi belum aktif. Masukkan key untuk mulai blast.</p>
     <div class="license-form">
@@ -121,7 +118,6 @@ body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0;
       <button class="btn-aktivasi" onclick="aktivasiKey()">🔑 Aktivasi</button>
     </div>
   </div>
-  <!-- WA Status -->
   <div class="card">
     <div class="card-header"><span>📱</span><h2>Status WhatsApp</h2></div>
     <div class="card-body">
@@ -140,7 +136,6 @@ body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0;
       </div>
     </div>
   </div>
-  <!-- Blast Form -->
   <div class="card">
     <div class="card-header"><span>🚀</span><h2>Kirim Blast</h2></div>
     <div class="card-body">
@@ -165,7 +160,6 @@ Perkenalkan layanan kami untuk kebutuhan kamu.
       <button class="btn btn-stop" id="btnStop" onclick="stopBlast()" style="display:none;">⏹ Stop Blast</button>
     </div>
   </div>
-  <!-- Progress -->
   <div class="card">
     <div class="card-header"><span>📊</span><h2>Progress Blast</h2><span id="blastBadge" class="badge" style="display:none;">LIVE</span></div>
     <div class="card-body">
@@ -178,14 +172,12 @@ Perkenalkan layanan kami untuk kebutuhan kamu.
       <div class="log-list" id="logList"><div class="empty-state">Belum ada blast berjalan</div></div>
     </div>
   </div>
-  <!-- Inbox -->
   <div class="card">
     <div class="card-header"><span>💬</span><h2>Inbox Balasan</h2><span id="inboxBadge" class="badge" style="display:none;">0</span></div>
     <div class="card-body">
       <div class="inbox-list" id="inboxList"><div class="empty-state">Belum ada balasan masuk</div></div>
     </div>
   </div>
-  <!-- Admin Panel -->
   <div class="admin-toggle" id="adminToggleWrap" style="display:none;">
     <button class="btn-sm" style="background:#ffd700;color:#000;font-weight:700;" onclick="toggleAdmin()">⚙️ Admin Panel</button>
   </div>
@@ -195,11 +187,7 @@ Perkenalkan layanan kami untuk kebutuhan kamu.
       <div class="admin-section">
         <h4>GENERATE LICENSE KEY</h4>
         <div class="admin-form">
-          <select id="aPlan">
-            <option>Starter</option>
-            <option>Pro</option>
-            <option>Unlimited</option>
-          </select>
+          <select id="aPlan"><option>Starter</option><option>Pro</option><option>Unlimited</option></select>
           <input type="number" id="aQuota" placeholder="Quota harian (mis. 500)" min="1">
           <input type="number" id="aDurasi" placeholder="Durasi hari (mis. 30)" min="1">
           <button class="btn-admin" onclick="generateKey()">🔑 Generate Key</button>
@@ -215,45 +203,48 @@ Perkenalkan layanan kami untuk kebutuhan kamu.
 </div>
 <script>
 const socket = io();
-let myUserId = null;
 let suksesBlast = 0, gagalBlast = 0, inboxCount = 0;
 
+// ─── Socket: reconnect otomatis join room ────────────────────────────────────
+socket.on('connect', () => {
+    socket.emit('join-me');
+});
+socket.emit('join-me');
+
+// ─── Init: ambil data user & status ──────────────────────────────────────────
 async function init() {
     const res  = await fetch('/api/me');
     const data = await res.json();
     if (!data.success) { window.location.href = '/'; return; }
-    document.getElementById('uName').textContent = data.username;
-    document.getElementById('uPlan').textContent = data.plan !== '-' ? `📦 ${data.plan}` : '🔒 No License';
+
+    document.getElementById('uName').textContent     = data.username;
+    document.getElementById('uPlan').textContent     = data.plan && data.plan !== '-' ? `📦 ${data.plan}` : '🔒 No License';
     document.getElementById('quotaBadge').textContent = `⚡ ${data.quotaTerpakai} / ${data.quotaHarian}`;
-    // license banner
+
     const banner = document.getElementById('licenseBanner');
     if (data.licenseActive) {
         banner.classList.add('active');
         const exp = data.licenseExpiry ? new Date(data.licenseExpiry).toLocaleDateString('id-ID') : '∞';
-        document.getElementById('licenseMsg').textContent = `✅ Lisensi aktif — ${data.plan} | Berlaku s/d ${exp} | Sisa quota hari ini: ${data.sisaQuota}`;
-        document.getElementById('licenseMsg').style.color = '#25d366';
+        document.getElementById('licenseMsg').textContent = `✅ Lisensi aktif — ${data.plan} | s/d ${exp} | Sisa quota: ${data.sisaQuota}`;
         document.querySelector('.license-form').style.display = 'none';
     }
-    // admin
     if (data.role === 'admin') {
         document.getElementById('adminToggleWrap').style.display = 'block';
     }
-    myUserId = data.username;
-    // join socket room — kirim username sebagai roomId (server pakai userId, kita ambil dari cookie sesi)
-    // sebenarnya userId dari session, tapi kita pakai endpoint khusus
+
     const stRes  = await fetch('/api/status');
     const stData = await stRes.json();
-    socket.emit('join-me');
     updateWAStatus(stData.status, stData.status === 'connected' ? `✅ Terhubung: ${stData.nomor}` : 'Menghubungkan...');
     if (data.licenseActive && stData.status === 'connected') {
         document.getElementById('btnBlast').disabled = false;
     }
 }
 
+// ─── Socket events ────────────────────────────────────────────────────────────
 socket.on('status', ({ status, msg }) => {
     updateWAStatus(status, msg);
     if (status === 'connected') {
-        fetch('/api/me').then(r=>r.json()).then(d => {
+        fetch('/api/me').then(r => r.json()).then(d => {
             if (d.licenseActive) document.getElementById('btnBlast').disabled = false;
         });
     } else {
@@ -264,73 +255,50 @@ socket.on('status', ({ status, msg }) => {
 socket.on('qr', (qrImage) => {
     if (qrImage) {
         document.getElementById('qrImage').src = qrImage;
-        document.getElementById('qrSection').style.display = 'block';
+        document.getElementById('qrSection').style.display  = 'block';
         document.getElementById('loadingSection').style.display = 'none';
     }
 });
 
-function updateWAStatus(status, msg) {
-    const badge = document.getElementById('statusBadge');
-    badge.className = `status-badge ${status}`;
-    if (status === 'connected') {
-        badge.textContent = '🟢 ' + msg;
-        document.getElementById('loadingSection').style.display = 'none';
-        document.getElementById('qrSection').style.display = 'none';
-        document.getElementById('connectedSection').style.display = 'block';
-        document.getElementById('connectedMsg').textContent = msg;
-    } else if (status === 'qr') {
-        badge.textContent = '🟡 Scan QR';
-        document.getElementById('loadingSection').style.display = 'none';
-        document.getElementById('connectedSection').style.display = 'none';
-        document.getElementById('qrSection').style.display = 'block';
-    } else {
-        badge.textContent = '🔴 ' + (msg || 'Terputus');
-        document.getElementById('loadingSection').style.display = 'block';
-        document.getElementById('qrSection').style.display = 'none';
-        document.getElementById('connectedSection').style.display = 'none';
-    }
-}
-
 socket.on('blast-start', ({ total }) => {
     suksesBlast = 0; gagalBlast = 0;
-    document.getElementById('statTotal').textContent  = total;
-    document.getElementById('statSukses').textContent = 0;
-    document.getElementById('statGagal').textContent  = 0;
+    document.getElementById('statTotal').textContent   = total;
+    document.getElementById('statSukses').textContent  = 0;
+    document.getElementById('statGagal').textContent   = 0;
     document.getElementById('progressBar').style.width = '0%';
-    document.getElementById('logList').innerHTML = '';
+    document.getElementById('logList').innerHTML       = '';
     document.getElementById('blastBadge').style.display = 'inline-block';
-    document.getElementById('btnBlast').style.display = 'none';
-    document.getElementById('btnStop').style.display  = 'block';
+    document.getElementById('btnBlast').style.display  = 'none';
+    document.getElementById('btnStop').style.display   = 'block';
 });
 
 socket.on('blast-progress', ({ no, status, index, total }) => {
     if (status === 'sukses') suksesBlast++; else gagalBlast++;
-    document.getElementById('statSukses').textContent = suksesBlast;
-    document.getElementById('statGagal').textContent  = gagalBlast;
-    document.getElementById('progressBar').style.width = Math.round((index/total)*100) + '%';
+    document.getElementById('statSukses').textContent  = suksesBlast;
+    document.getElementById('statGagal').textContent   = gagalBlast;
+    document.getElementById('progressBar').style.width = Math.round((index / total) * 100) + '%';
     const item = document.createElement('div');
     item.className = 'log-item';
-    item.innerHTML = `<div class="log-dot ${status}"></div><div class="log-no">${no}</div><div class="log-status ${status}">${status==='sukses'?'✅ Terkirim':'❌ Gagal'}</div><div style="color:#444;font-size:11px">[${index}/${total}]</div>`;
+    item.innerHTML = `<div class="log-dot ${status}"></div><div class="log-no">${no}</div><div class="log-status ${status}">${status === 'sukses' ? '✅ Terkirim' : '❌ Gagal'}</div><div style="color:#444;font-size:11px">[${index}/${total}]</div>`;
     document.getElementById('logList').prepend(item);
-    // update quota badge
-    fetch('/api/me').then(r=>r.json()).then(d => {
+    fetch('/api/me').then(r => r.json()).then(d => {
         if (d.success) document.getElementById('quotaBadge').textContent = `⚡ ${d.quotaTerpakai} / ${d.quotaHarian}`;
     });
 });
 
 socket.on('blast-done', ({ total, sukses, gagal }) => {
     document.getElementById('blastBadge').style.display = 'none';
-    document.getElementById('btnBlast').style.display = 'block';
-    document.getElementById('btnStop').style.display  = 'none';
+    document.getElementById('btnBlast').style.display   = 'block';
+    document.getElementById('btnStop').style.display    = 'none';
     document.getElementById('btnBlast').disabled = false;
-    init(); // refresh quota
+    init();
     alert(`🎉 Blast selesai!\n✅ Sukses: ${sukses}\n❌ Gagal: ${gagal}\n📊 Total: ${total}`);
 });
 
 socket.on('blast-stopped', () => {
     document.getElementById('blastBadge').style.display = 'none';
-    document.getElementById('btnBlast').style.display = 'block';
-    document.getElementById('btnStop').style.display  = 'none';
+    document.getElementById('btnBlast').style.display   = 'block';
+    document.getElementById('btnStop').style.display    = 'none';
     document.getElementById('btnBlast').disabled = false;
 });
 
@@ -339,7 +307,7 @@ socket.on('inbox', (item) => {
     inboxCount++;
     const badge = document.getElementById('inboxBadge');
     badge.style.display = 'inline-block';
-    badge.textContent = inboxCount;
+    badge.textContent   = inboxCount;
 });
 
 socket.on('inbox-all', (items) => {
@@ -349,11 +317,34 @@ socket.on('inbox-all', (items) => {
     inboxCount = items.length;
     const badge = document.getElementById('inboxBadge');
     badge.style.display = 'inline-block';
-    badge.textContent = inboxCount;
+    badge.textContent   = inboxCount;
 });
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function updateWAStatus(status, msg) {
+    const badge = document.getElementById('statusBadge');
+    badge.className = `status-badge ${status}`;
+    if (status === 'connected') {
+        badge.textContent = '🟢 ' + msg;
+        document.getElementById('loadingSection').style.display   = 'none';
+        document.getElementById('qrSection').style.display        = 'none';
+        document.getElementById('connectedSection').style.display = 'block';
+        document.getElementById('connectedMsg').textContent       = msg;
+    } else if (status === 'qr') {
+        badge.textContent = '🟡 Scan QR';
+        document.getElementById('loadingSection').style.display   = 'none';
+        document.getElementById('connectedSection').style.display = 'none';
+        document.getElementById('qrSection').style.display        = 'block';
+    } else {
+        badge.textContent = '🔴 ' + (msg || 'Terputus');
+        document.getElementById('loadingSection').style.display   = 'block';
+        document.getElementById('qrSection').style.display        = 'none';
+        document.getElementById('connectedSection').style.display = 'none';
+    }
+}
+
 function addInboxItem(item) {
-    const list = document.getElementById('inboxList');
+    const list  = document.getElementById('inboxList');
     const empty = list.querySelector('.empty-state');
     if (empty) empty.remove();
     const el = document.createElement('div');
@@ -362,12 +353,18 @@ function addInboxItem(item) {
     list.prepend(el);
 }
 
+function hitungNomor() {
+    const lines = document.getElementById('inputNomor').value.split('\n').map(n => n.trim()).filter(n => /^62\d{8,13}$/.test(n));
+    document.getElementById('nomorCount').textContent = lines.length + ' nomor valid';
+}
+
+// ─── Actions ──────────────────────────────────────────────────────────────────
 async function mulaiBlast() {
     const nomor = document.getElementById('inputNomor').value.trim();
     const pesan = document.getElementById('inputPesan').value.trim();
     if (!nomor) return alert('Isi nomor tujuan dulu!');
     if (!pesan) return alert('Isi pesan dulu!');
-    const res  = await fetch('/api/blast', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ nomor, pesan }) });
+    const res  = await fetch('/api/blast', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nomor, pesan }) });
     const data = await res.json();
     if (!data.success) alert('❌ ' + data.error);
     else if (data.catatan) alert('⚠️ ' + data.catatan);
@@ -392,15 +389,10 @@ async function doLogout() {
 async function aktivasiKey() {
     const key = document.getElementById('inputKey').value.trim();
     if (!key) return alert('Masukkan key aktivasi!');
-    const res  = await fetch('/api/aktivasi', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ key }) });
+    const res  = await fetch('/api/aktivasi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) });
     const data = await res.json();
     if (data.success) { alert(data.msg); location.reload(); }
     else alert('❌ ' + data.error);
-}
-
-function hitungNomor() {
-    const lines = document.getElementById('inputNomor').value.split('\n').map(n => n.trim()).filter(n => /^62\d{8,13}$/.test(n));
-    document.getElementById('nomorCount').textContent = lines.length + ' nomor valid';
 }
 
 async function uploadFile(input) {
@@ -411,8 +403,8 @@ async function uploadFile(input) {
     const res  = await fetch('/api/upload-nomor', { method: 'POST', body: formData });
     const data = await res.json();
     if (data.success) {
-        document.getElementById('inputNomor').value = data.nomor.join('\n');
-        document.getElementById('nomorCount').textContent = `${data.total} nomor valid dari file`;
+        document.getElementById('inputNomor').value         = data.nomor.join('\n');
+        document.getElementById('nomorCount').textContent   = `${data.total} nomor valid dari file`;
     } else {
         alert('❌ ' + data.error);
     }
@@ -430,33 +422,26 @@ async function generateKey() {
     const quota  = document.getElementById('aQuota').value;
     const durasi = document.getElementById('aDurasi').value;
     if (!quota || !durasi) return alert('Isi quota dan durasi!');
-    const res  = await fetch('/api/admin/generate-key', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ plan, quotaHarian: quota, durasiHari: durasi }) });
+    const res  = await fetch('/api/admin/generate-key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan, quotaHarian: quota, durasiHari: durasi }) });
     const data = await res.json();
     if (data.success) {
         const el = document.getElementById('keyResult');
-        el.textContent = '🔑 ' + data.key;
-        el.style.display = 'block';
+        el.textContent    = '🔑 ' + data.key;
+        el.style.display  = 'block';
     } else alert('❌ ' + data.error);
 }
 
 async function loadUsers() {
-    const res  = await fetch('/api/admin/users');
+    const res   = await fetch('/api/admin/users');
     const users = await res.json();
-    const wrap = document.getElementById('usersTableWrap');
+    const wrap  = document.getElementById('usersTableWrap');
     if (!users.length) { wrap.innerHTML = '<div class="empty-state">Belum ada user</div>'; return; }
     wrap.innerHTML = `<table class="users-table"><thead><tr><th>Username</th><th>Plan</th><th>Quota</th><th>Exp</th></tr></thead><tbody>${
-        users.map(u => `<tr><td>${u.username}</td><td>${u.plan||'-'}</td><td>${u.quotaTerpakai}/${u.quotaHarian}</td><td>${u.licenseExpiry ? new Date(u.licenseExpiry).toLocaleDateString('id-ID') : '-'}</td></tr>`).join('')
+        users.map(u => `<tr><td>${u.username}</td><td>${u.plan || '-'}</td><td>${u.quotaTerpakai}/${u.quotaHarian}</td><td>${u.licenseExpiry ? new Date(u.licenseExpiry).toLocaleDateString('id-ID') : '-'}</td></tr>`).join('')
     }</tbody></table>`;
 }
 
-script_join_placeholder();
 init();
-
-function script_join_placeholder() {
-    // Socket join — server pakai userId dari session, kita kirim sinyal join
-    socket.on('connect', () => { socket.emit('join-me'); });
-    socket.emit('join-me');
-}
 </script>
 </body>
 </html>
