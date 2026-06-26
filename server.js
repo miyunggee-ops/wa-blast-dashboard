@@ -73,7 +73,6 @@ function requireAdmin(req, res, next) {
     next();
 }
 
-// ─── WA Pool store ────────────────────────────────────────────────────────────
 const poolSessions = {};
 function getPoolSession(poolId) {
     if (!poolSessions[poolId]) poolSessions[poolId] = { sock: null, status: 'disconnected' };
@@ -104,7 +103,6 @@ function notifyPoolUsers(poolId, status, nomor) {
     });
 }
 
-// ─── Connect WA Pool via QR ───────────────────────────────────────────────────
 async function connectPoolQR(poolId) {
     const ps = getPoolSession(poolId);
     if (ps.status === 'connected' || ps.status === 'connecting') return;
@@ -126,19 +124,15 @@ async function connectPoolQR(poolId) {
 
     ps.sock.ev.on('connection.update', async (update) => {
         const { connection, qr, lastDisconnect } = update;
-
         if (qr) {
             ps.status = 'qr';
             const qrImage = await qrcode.toDataURL(qr);
-            // Kirim QR ke admin room
             io.to('admin').emit('pool-qr', { poolId, qr: qrImage });
-            // Update status pool
             const pool = readJSON('data/wa-pool.json');
             const idx  = pool.findIndex(p => p.id === poolId);
             if (idx !== -1) { pool[idx].status = 'qr'; writeJSON('data/wa-pool.json', pool); }
             io.to('admin').emit('pool-status', { poolId, status: 'qr' });
         }
-
         if (connection === 'close') {
             ps.status = 'disconnected';
             notifyPoolUsers(poolId, 'disconnected', '');
@@ -152,14 +146,13 @@ async function connectPoolQR(poolId) {
                 io.to('admin').emit('pool-status', { poolId, status: 'expired' });
             }
         }
-
         if (connection === 'open') {
             ps.status     = 'connected';
             const nomorWA = ps.sock.user?.id?.split(':')[0] || '';
             const pool    = readJSON('data/wa-pool.json');
             const idx     = pool.findIndex(p => p.id === poolId);
             if (idx !== -1) { pool[idx].status = 'connected'; pool[idx].nomor = nomorWA; writeJSON('data/wa-pool.json', pool); }
-            io.to('admin').emit('pool-qr', { poolId, qr: null }); // clear QR
+            io.to('admin').emit('pool-qr', { poolId, qr: null });
             io.to('admin').emit('pool-status', { poolId, status: 'connected', nomor: nomorWA });
             notifyPoolUsers(poolId, 'connected', nomorWA);
         }
@@ -170,10 +163,20 @@ async function connectPoolQR(poolId) {
         for (const msg of messages) {
             if (msg.key.fromMe) continue;
             const from = msg.key.remoteJid?.replace('@s.whatsapp.net', '') || '';
-            const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '[Media]';
+            const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || msg.message?.imageMessage?.caption || '[Media]';
             const item = { from, text, time: new Date().toLocaleTimeString('id-ID') };
             const users = readJSON('data/users.json');
+            const seenIds = new Set();
+            // Forward ke user yang pakai nomor ini
             users.filter(u => u.assignedWA === poolId).forEach(u => {
+                seenIds.add(u.id);
+                const ses = getUserSession(u.id);
+                ses.inbox.unshift(item);
+                if (ses.inbox.length > 100) ses.inbox.pop();
+                io.to(`user:${u.id}`).emit('inbox', item);
+            });
+            // Forward ke semua admin supaya inbox selalu masuk
+            users.filter(u => u.role === 'admin' && !seenIds.has(u.id)).forEach(u => {
                 const ses = getUserSession(u.id);
                 ses.inbox.unshift(item);
                 if (ses.inbox.length > 100) ses.inbox.pop();
@@ -191,7 +194,6 @@ function autoReconnectPool() {
     });
 }
 
-// ─── Connect personal QR ──────────────────────────────────────────────────────
 async function connectPersonal(userId) {
     const ses = getUserSession(userId);
     if (ses.status === 'connected' || ses.status === 'connecting') return;
@@ -211,7 +213,7 @@ async function connectPersonal(userId) {
         for (const msg of messages) {
             if (msg.key.fromMe) continue;
             const from = msg.key.remoteJid?.replace('@s.whatsapp.net','') || '';
-            const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '[Media]';
+            const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || msg.message?.imageMessage?.caption || '[Media]';
             const item = { from, text, time: new Date().toLocaleTimeString('id-ID') };
             ses.inbox.unshift(item); if (ses.inbox.length > 100) ses.inbox.pop();
             io.to(`user:${userId}`).emit('inbox', item);
@@ -219,7 +221,6 @@ async function connectPersonal(userId) {
     });
 }
 
-// ─── Routes ───────────────────────────────────────────────────────────────────
 app.get('/', (req, res) => { if (req.session.userId) return res.redirect('/dashboard'); res.sendFile(path.join(__dirname, 'public', 'login.html')); });
 app.get('/dashboard', (req, res) => { if (!req.session.userId) return res.redirect('/'); res.sendFile(path.join(__dirname, 'public', 'index.html')); });
 
@@ -274,7 +275,6 @@ app.post('/api/aktivasi', requireLogin, (req, res) => {
     res.json({ success: true, msg: `✅ Lisensi ${lic.plan} aktif! Berlaku ${lic.durasiHari} hari. Quota: ${lic.quotaHarian}/hari.` });
 });
 
-// WA Pool routes
 app.get('/api/admin/wa-pool', requireAdmin, (req, res) => res.json(readJSON('data/wa-pool.json')));
 
 app.post('/api/admin/wa-pool/add', requireAdmin, async (req, res) => {
