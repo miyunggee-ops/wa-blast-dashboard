@@ -6,7 +6,7 @@
 <title>MESIN-WA — Login</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; display: flex; align-items: center; justify-content: center; user-select: none; -webkit-user-select: none; }
 .wrap { width: 100%; max-width: 400px; padding: 24px; }
 .logo { text-align: center; margin-bottom: 32px; }
 .logo h1 { font-size: 28px; color: #fff; font-weight: 800; letter-spacing: -1px; }
@@ -18,7 +18,7 @@ body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0;
 .tab.active { color: #25d366; border-bottom-color: #25d366; }
 .form-group { margin-bottom: 16px; }
 .form-group label { display: block; font-size: 12px; color: #aaa; margin-bottom: 6px; font-weight: 500; }
-.form-group input { width: 100%; background: #0f1117; border: 1px solid #2a3448; border-radius: 8px; color: #e0e0e0; padding: 10px 12px; font-size: 14px; }
+.form-group input { width: 100%; background: #0f1117; border: 1px solid #2a3448; border-radius: 8px; color: #e0e0e0; padding: 10px 12px; font-size: 14px; user-select: text; -webkit-user-select: text; }
 .form-group input:focus { outline: none; border-color: #25d366; }
 .btn { width: 100%; padding: 12px; border-radius: 8px; border: none; font-size: 14px; font-weight: 700; cursor: pointer; background: #25d366; color: #000; }
 .btn:hover { background: #20bb5a; }
@@ -57,6 +57,24 @@ body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0;
   </div>
 </div>
 <script>
+// ─── PROTEKSI SOURCE CODE ─────────────────────────────────────────────────────
+document.addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('keydown', e => {
+    if (e.key === 'F12') { e.preventDefault(); return false; }
+    if (e.ctrlKey && e.shiftKey && ['I','J','C','U'].includes(e.key.toUpperCase())) { e.preventDefault(); return false; }
+    if (e.ctrlKey && e.key.toUpperCase() === 'U') { e.preventDefault(); return false; }
+    if (e.ctrlKey && e.key.toUpperCase() === 'S') { e.preventDefault(); return false; }
+});
+(function devtools(){
+    const threshold = 160;
+    setInterval(()=>{
+        if(window.outerWidth - window.innerWidth > threshold || window.outerHeight - window.innerHeight > threshold){
+            document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0f1117;color:#ff4757;font-family:sans-serif;font-size:18px;font-weight:700;">&#9888; Akses ditolak</div>';
+        }
+    }, 1000);
+})();
+// ─────────────────────────────────────────────────────────────────────────────
+
 function switchTab(t){document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',(i===0&&t==='login')||(i===1&&t==='register')));document.getElementById('panelLogin').classList.toggle('active',t==='login');document.getElementById('panelRegister').classList.toggle('active',t==='register');}
 async function doLogin(){const u=document.getElementById('loginUser').value.trim();const p=document.getElementById('loginPass').value;const msg=document.getElementById('msgLogin');msg.style.display='none';if(!u||!p){showMsg(msg,'error','Isi username & password!');return;}const res=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});const data=await res.json();if(data.success){window.location.href='/dashboard';}else showMsg(msg,'error',data.error);}
 async function doRegister(){const u=document.getElementById('regUser').value.trim();const p=document.getElementById('regPass').value;const msg=document.getElementById('msgRegister');msg.style.display='none';if(!u||!p){showMsg(msg,'error','Isi semua field!');return;}if(p.length<6){showMsg(msg,'error','Password min. 6 karakter!');return;}const res=await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});const data=await res.json();if(data.success){showMsg(msg,'success',data.msg);setTimeout(()=>switchTab('login'),2000);}else showMsg(msg,'error',data.error);}
