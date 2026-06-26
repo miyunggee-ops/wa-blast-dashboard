@@ -1,4 +1,4 @@
-// WA Blast Dashboard v3 - WA Pool + QR per nomor
+// WA Blast Dashboard v3 - Spintax + Rotasi Nomor
 const {
     default: makeWASocket,
     useMultiFileAuthState,
@@ -33,6 +33,20 @@ if (!fs.existsSync('uploads')) fs.mkdirSync('uploads', { recursive: true });
 function readJSON(file)        { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return []; } }
 function writeJSON(file, data) { fs.writeFileSync(file, JSON.stringify(data, null, 2)); }
 
+// ─── Spintax parser ────────────────────────────────────────────────────────────────
+function parseSpintax(text) {
+    // Format: {opsi1|opsi2|opsi3} → pilih satu secara random
+    let result = text;
+    let limit  = 50; // max iterasi biar tidak infinite loop
+    while (result.includes('{') && limit-- > 0) {
+        result = result.replace(/\{([^{}]+)\}/g, (match, content) => {
+            const options = content.split('|');
+            return options[Math.floor(Math.random() * options.length)];
+        });
+    }
+    return result;
+}
+
 function seedData() {
     let users = readJSON('data/users.json');
     if (!fs.existsSync('data/licenses.json')) writeJSON('data/licenses.json', [
@@ -57,7 +71,6 @@ function seedData() {
 seedData();
 
 const upload = multer({ dest: 'uploads/', fileFilter: (req, file, cb) => { const ext = path.extname(file.originalname).toLowerCase(); ['.txt','.csv'].includes(ext) ? cb(null,true) : cb(new Error('Hanya .txt/.csv')); }, limits: { fileSize: 2*1024*1024 } });
-
 const sessionMiddleware = session({ secret: SESSION_SECRET, resave: false, saveUninitialized: false, cookie: { maxAge: 24*60*60*1000 } });
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -81,7 +94,7 @@ function getPoolSession(poolId) {
 
 const sessions = {};
 function getUserSession(userId) {
-    if (!sessions[userId]) sessions[userId] = { sock: null, status: 'disconnected', isBlasting: false, blastLog: [], inbox: [], poolId: null };
+    if (!sessions[userId]) sessions[userId] = { sock: null, status: 'disconnected', isBlasting: false, blastLog: [], inbox: [], poolId: null, rotasiIdx: 0 };
     return sessions[userId];
 }
 
@@ -89,6 +102,20 @@ function cekResetQuota(user) {
     const hari = new Date().toDateString();
     if (user.lastReset !== hari) { user.quotaTerpakai = 0; user.lastReset = hari; }
     return user;
+}
+
+// ─── Rotasi nomor: ambil sock berikutnya dari pool ─────────────────────────────────
+function getRotasiSock(userId) {
+    // Ambil semua pool yang connected
+    const pool = readJSON('data/wa-pool.json');
+    const aktif = pool.filter(p => p.status === 'connected');
+    if (!aktif.length) return null;
+    const ses = getUserSession(userId);
+    // Round-robin index
+    const idx  = ses.rotasiIdx % aktif.length;
+    ses.rotasiIdx++;
+    const ps = getPoolSession(aktif[idx].id);
+    return ps.status === 'connected' ? ps.sock : null;
 }
 
 function notifyPoolUsers(poolId, status, nomor) {
@@ -107,21 +134,11 @@ async function connectPoolQR(poolId) {
     const ps = getPoolSession(poolId);
     if (ps.status === 'connected' || ps.status === 'connecting') return;
     ps.status = 'connecting';
-
     const sesiDir              = `sesi_pool_${poolId}`;
     const { version }          = await fetchLatestBaileysVersion();
     const { state, saveCreds } = await useMultiFileAuthState(sesiDir);
-
-    ps.sock = makeWASocket({
-        version, auth: state,
-        printQRInTerminal: false,
-        logger: pino({ level: 'silent' }),
-        browser: Browsers.ubuntu('Chrome'),
-        syncFullHistory: false,
-    });
-
+    ps.sock = makeWASocket({ version, auth: state, printQRInTerminal: false, logger: pino({ level: 'silent' }), browser: Browsers.ubuntu('Chrome'), syncFullHistory: false });
     ps.sock.ev.on('creds.update', saveCreds);
-
     ps.sock.ev.on('connection.update', async (update) => {
         const { connection, qr, lastDisconnect } = update;
         if (qr) {
@@ -157,7 +174,6 @@ async function connectPoolQR(poolId) {
             notifyPoolUsers(poolId, 'connected', nomorWA);
         }
     });
-
     ps.sock.ev.on('messages.upsert', ({ messages, type }) => {
         if (type !== 'notify') return;
         for (const msg of messages) {
@@ -167,19 +183,15 @@ async function connectPoolQR(poolId) {
             const item = { from, text, time: new Date().toLocaleTimeString('id-ID') };
             const users = readJSON('data/users.json');
             const seenIds = new Set();
-            // Forward ke user yang pakai nomor ini
             users.filter(u => u.assignedWA === poolId).forEach(u => {
                 seenIds.add(u.id);
                 const ses = getUserSession(u.id);
-                ses.inbox.unshift(item);
-                if (ses.inbox.length > 100) ses.inbox.pop();
+                ses.inbox.unshift(item); if (ses.inbox.length > 100) ses.inbox.pop();
                 io.to(`user:${u.id}`).emit('inbox', item);
             });
-            // Forward ke semua admin supaya inbox selalu masuk
             users.filter(u => u.role === 'admin' && !seenIds.has(u.id)).forEach(u => {
                 const ses = getUserSession(u.id);
-                ses.inbox.unshift(item);
-                if (ses.inbox.length > 100) ses.inbox.pop();
+                ses.inbox.unshift(item); if (ses.inbox.length > 100) ses.inbox.pop();
                 io.to(`user:${u.id}`).emit('inbox', item);
             });
         }
@@ -205,7 +217,7 @@ async function connectPersonal(userId) {
     ses.sock.ev.on('connection.update', async (update) => {
         const { connection, qr, lastDisconnect } = update;
         if (qr) { ses.status = 'qr'; const qrImage = await qrcode.toDataURL(qr); io.to(`user:${userId}`).emit('qr', qrImage); io.to(`user:${userId}`).emit('status', { status: 'qr', msg: 'Scan QR Code' }); }
-        if (connection === 'close') { ses.status = 'disconnected'; const kode = lastDisconnect?.error?.output?.statusCode; if (kode !== DisconnectReason.loggedOut) { io.to(`user:${userId}`).emit('status', { status: 'disconnected', msg: 'Terputus, mencoba ulang...' }); setTimeout(() => connectPersonal(userId), 5000); } else { io.to(`user:${userId}`).emit('status', { status: 'disconnected', msg: 'Session expired! Reset.' }); } }
+        if (connection === 'close') { ses.status = 'disconnected'; const kode = lastDisconnect?.error?.output?.statusCode; if (kode !== DisconnectReason.loggedOut) { io.to(`user:${userId}`).emit('status', { status: 'disconnected', msg: 'Terputus, mencoba ulang...' }); setTimeout(() => connectPersonal(userId), 5000); } else { io.to(`user:${userId}`).emit('status', { status: 'disconnected', msg: 'Session expired!' }); } }
         if (connection === 'open') { ses.status = 'connected'; const n = ses.sock.user?.id?.split(':')[0]||'-'; io.to(`user:${userId}`).emit('qr', null); io.to(`user:${userId}`).emit('status', { status: 'connected', msg: `✅ Terhubung: ${n}` }); }
     });
     ses.sock.ev.on('messages.upsert', ({ messages, type }) => {
@@ -255,7 +267,8 @@ app.get('/api/me', requireLogin, (req, res) => {
     cekResetQuota(user); writeJSON('data/users.json', users);
     const pool   = readJSON('data/wa-pool.json');
     const waPool = user.assignedWA ? pool.find(p => p.id === user.assignedWA) : null;
-    res.json({ success: true, userId: user.id, username: user.username, role: user.role, licenseActive: user.licenseActive, licenseExpiry: user.licenseExpiry, plan: user.plan||'-', quotaHarian: user.quotaHarian, quotaTerpakai: user.quotaTerpakai, sisaQuota: Math.max(0, user.quotaHarian - user.quotaTerpakai), assignedWA: user.assignedWA, assignedNomor: waPool?.nomor||null });
+    const poolAktif = pool.filter(p => p.status === 'connected').length;
+    res.json({ success: true, userId: user.id, username: user.username, role: user.role, licenseActive: user.licenseActive, licenseExpiry: user.licenseExpiry, plan: user.plan||'-', quotaHarian: user.quotaHarian, quotaTerpakai: user.quotaTerpakai, sisaQuota: Math.max(0, user.quotaHarian - user.quotaTerpakai), assignedWA: user.assignedWA, assignedNomor: waPool?.nomor||null, poolAktif });
 });
 
 app.post('/api/aktivasi', requireLogin, (req, res) => {
@@ -354,14 +367,19 @@ app.get('/api/admin/licenses', requireAdmin, (req, res) => res.json(readJSON('da
 app.get('/api/status', requireLogin, (req, res) => {
     const users = readJSON('data/users.json');
     const user  = users.find(u => u.id === req.session.userId);
+    const pool  = readJSON('data/wa-pool.json');
+    const poolAktif = pool.filter(p => p.status === 'connected');
     if (user?.assignedWA) {
-        const ps   = getPoolSession(user.assignedWA);
-        const pool = readJSON('data/wa-pool.json');
-        const p    = pool.find(p => p.id === user.assignedWA);
-        return res.json({ status: ps.status, nomor: p?.nomor||'-', mode: 'pool' });
+        const ps = getPoolSession(user.assignedWA);
+        const p  = pool.find(p => p.id === user.assignedWA);
+        return res.json({ status: ps.status, nomor: p?.nomor||'-', mode: 'pool', poolAktif: poolAktif.length });
+    }
+    // Admin: cek apakah ada pool aktif untuk rotasi
+    if (user?.role === 'admin' && poolAktif.length > 0) {
+        return res.json({ status: 'connected', nomor: `${poolAktif.length} nomor pool`, mode: 'rotasi', poolAktif: poolAktif.length });
     }
     const ses = getUserSession(req.session.userId);
-    res.json({ status: ses.status, nomor: ses.sock?.user?.id?.split(':')[0]||'-', mode: 'personal' });
+    res.json({ status: ses.status, nomor: ses.sock?.user?.id?.split(':')[0]||'-', mode: 'personal', poolAktif: poolAktif.length });
 });
 
 app.get('/api/inbox',     requireLogin, (req,res) => res.json(getUserSession(req.session.userId).inbox));
@@ -373,18 +391,34 @@ app.post('/api/blast', requireLogin, async (req, res) => {
     if (!user)               return res.json({ success: false, error: 'User tidak ditemukan!' });
     if (!user.licenseActive) return res.json({ success: false, error: 'Aktifkan lisensi dulu!' });
     if (user.licenseExpiry && new Date() > new Date(user.licenseExpiry)) return res.json({ success: false, error: 'Lisensi expired!' });
-    let sock;
+
+    // Tentukan mode blast
+    let sockGetter;
     if (user.assignedWA) {
+        // User punya nomor tetap
         const ps = getPoolSession(user.assignedWA);
         if (ps.status !== 'connected') return res.json({ success: false, error: 'Nomor WA pool belum connected!' });
-        sock = ps.sock;
+        sockGetter = () => ps.sock;
+    } else if (user.role === 'admin') {
+        // Admin: gunakan rotasi otomatis dari semua pool
+        const sock = getRotasiSock(req.session.userId);
+        if (!sock) {
+            // Fallback ke personal
+            const ses = getUserSession(req.session.userId);
+            if (ses.status !== 'connected') return res.json({ success: false, error: 'WA belum terhubung! Scan QR atau tambah nomor ke pool.' });
+            sockGetter = () => ses.sock;
+        } else {
+            sockGetter = () => getRotasiSock(req.session.userId) || sock;
+        }
     } else {
         const ses = getUserSession(req.session.userId);
         if (ses.status !== 'connected') return res.json({ success: false, error: 'WA belum terhubung!' });
-        sock = ses.sock;
+        sockGetter = () => ses.sock;
     }
+
     const ses = getUserSession(req.session.userId);
     if (ses.isBlasting) return res.json({ success: false, error: 'Blast sedang berjalan!' });
+
     const { nomor, pesan } = req.body;
     if (!nomor || !pesan) return res.json({ success: false, error: 'Nomor dan pesan wajib diisi!' });
     const allNomor = nomor.split('\n').map(n=>n.trim()).filter(n=>/^62\d{8,13}$/.test(n));
@@ -395,7 +429,7 @@ app.post('/api/blast', requireLogin, async (req, res) => {
     const blastNomor = allNomor.slice(0, sisa);
     ses.blastLog = []; ses.isBlasting = true;
     res.json({ success: true, total: blastNomor.length, catatan: blastNomor.length < allNomor.length ? `Hanya ${blastNomor.length} dari ${allNomor.length} dikirim (sisa quota)` : null });
-    jalankanBlast(req.session.userId, sock, pesan, blastNomor);
+    jalankanBlast(req.session.userId, sockGetter, pesan, blastNomor);
 });
 
 app.post('/api/blast/stop', requireLogin, (req, res) => {
@@ -427,14 +461,25 @@ app.post('/api/upload-nomor', requireLogin, upload.single('file'), (req, res) =>
     } catch(e) { res.json({ success: false, error: e.message }); }
 });
 
-async function jalankanBlast(userId, sock, pesan, numbers) {
+// ─── Blast worker dengan spintax + rotasi ───────────────────────────────────────────
+async function jalankanBlast(userId, sockGetter, pesan, numbers) {
     const ses = getUserSession(userId);
     io.to(`user:${userId}`).emit('blast-start', { total: numbers.length });
     for (let i = 0; i < numbers.length; i++) {
         if (!ses.isBlasting) break;
+        // Spintax: generate pesan unik tiap nomor
+        const pesanFinal = parseSpintax(pesan);
+        // Rotasi: ambil sock yang dipakai
+        const sock = typeof sockGetter === 'function' ? sockGetter() : sockGetter;
+        if (!sock) {
+            const log = { no: numbers[i], status: 'gagal', index: i+1, total: numbers.length, time: new Date().toLocaleTimeString('id-ID'), info: 'no sock' };
+            ses.blastLog.push(log);
+            io.to(`user:${userId}`).emit('blast-progress', log);
+            continue;
+        }
         let status = 'gagal';
         try {
-            await sock.sendMessage(`${numbers[i]}@s.whatsapp.net`, { text: pesan });
+            await sock.sendMessage(`${numbers[i]}@s.whatsapp.net`, { text: pesanFinal });
             status = 'sukses';
             const users = readJSON('data/users.json');
             const idx   = users.findIndex(u => u.id === userId);
@@ -464,10 +509,17 @@ io.on('connection', (socket) => {
         const ses = getUserSession(userId);
         if (ps.status === 'connected') { ses.sock=ps.sock; ses.status='connected'; ses.poolId=user.assignedWA; }
     } else {
-        const ses = getUserSession(userId);
-        socket.emit('status', { status: ses.status, msg: ses.status==='connected' ? `✅ Terhubung: ${ses.sock?.user?.id?.split(':')[0]||'-'}` : ses.status==='qr' ? 'Scan QR' : 'Menghubungkan...' });
-        socket.emit('inbox-all', ses.inbox);
-        if (ses.status === 'disconnected') connectPersonal(userId);
+        const pool  = readJSON('data/wa-pool.json');
+        const aktif = pool.filter(p => p.status === 'connected');
+        if (user?.role === 'admin' && aktif.length > 0) {
+            // Admin dengan pool aktif: langsung siap blast
+            socket.emit('status', { status: 'connected', msg: `✅ ${aktif.length} nomor pool aktif (rotasi)` });
+        } else {
+            const ses = getUserSession(userId);
+            socket.emit('status', { status: ses.status, msg: ses.status==='connected' ? `✅ Terhubung: ${ses.sock?.user?.id?.split(':')[0]||'-'}` : ses.status==='qr' ? 'Scan QR' : 'Menghubungkan...' });
+            socket.emit('inbox-all', ses.inbox);
+            if (ses.status === 'disconnected') connectPersonal(userId);
+        }
     }
     socket.on('join-me', () => { socket.join(`user:${userId}`); if (user?.role==='admin') socket.join('admin'); });
 });
