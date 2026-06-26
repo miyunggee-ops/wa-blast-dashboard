@@ -19,7 +19,7 @@ body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0;
 .status-badge { padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
 .status-badge.connected { background: #1a4731; color: #25d366; }
 .status-badge.qr { background: #3d3500; color: #ffd700; }
-.status-badge.disconnected, .status-badge.connecting, .status-badge.otp_sent { background: #3d1a1a; color: #ff6b6b; }
+.status-badge.disconnected,.status-badge.connecting,.status-badge.pending { background: #3d1a1a; color: #ff6b6b; }
 .btn-sm { padding: 6px 12px; border-radius: 6px; border: none; font-size: 12px; font-weight: 600; cursor: pointer; }
 .btn-logout { background: #2a3448; color: #aaa; }
 .btn-logout:hover { background: #3a4560; color: #fff; }
@@ -100,16 +100,19 @@ body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0;
 .admin-form { display: flex; flex-direction: column; gap: 8px; }
 .admin-form input, .admin-form select { background: #0f1117; border: 1px solid #2a3448; border-radius: 6px; color: #e0e0e0; padding: 8px 10px; font-size: 12px; }
 .btn-admin { background: #ffd700; color: #000; padding: 9px; border-radius: 6px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; width: 100%; }
-.btn-danger { background: #ff4757; color: #fff; padding: 6px 12px; border-radius: 6px; border: none; font-size: 11px; font-weight: 600; cursor: pointer; }
-.btn-success { background: #25d366; color: #000; padding: 6px 12px; border-radius: 6px; border: none; font-size: 11px; font-weight: 600; cursor: pointer; }
+.btn-danger { background: #ff4757; color: #fff; padding: 5px 10px; border-radius: 5px; border: none; font-size: 11px; cursor: pointer; }
 .key-result { background: #0f1117; border-radius: 6px; padding: 10px; font-size: 13px; color: #25d366; margin-top: 8px; display: none; word-break: break-all; }
 .pool-table, .users-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .pool-table th, .users-table th { color: #666; font-weight: 600; padding: 6px 8px; text-align: left; border-bottom: 1px solid #2a3448; }
 .pool-table td, .users-table td { padding: 6px 8px; border-bottom: 1px solid #1a1f2e; color: #ccc; vertical-align: middle; }
 .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
 .pill.connected { background: #1a4731; color: #25d366; }
-.pill.disconnected, .pill.pending, .pill.expired { background: #3d1a1a; color: #ff6b6b; }
-.pill.otp_sent { background: #3d3500; color: #ffd700; }
+.pill.disconnected,.pill.pending,.pill.expired { background: #3d1a1a; color: #ff6b6b; }
+.pill.qr { background: #3d3500; color: #ffd700; }
+/* Pool QR modal */
+.pool-qr-box { background: #0f1117; border: 1px solid #25d366; border-radius: 10px; padding: 14px; text-align: center; margin-top: 10px; display: none; }
+.pool-qr-box img { width: 180px; height: 180px; background: #fff; padding: 6px; border-radius: 8px; }
+.pool-qr-box p { font-size: 12px; color: #aaa; margin-top: 8px; }
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-thumb { background: #2a3448; border-radius: 2px; }
 </style>
@@ -209,16 +212,18 @@ Perkenalkan layanan kami untuk kebutuhan kamu.
       <div class="admin-tab" onclick="switchAdminTab('users')">👥 Users</div>
       <div class="admin-tab" onclick="switchAdminTab('keys')">🔑 License Keys</div>
     </div>
-    <!-- WA Pool -->
     <div id="tabPool" class="admin-tab-content active">
       <div class="admin-grid">
         <div class="admin-section">
           <h4>TAMBAH NOMOR WA KE POOL</h4>
-          <div class="admin-form">
-            <input type="text" id="poolNomorInput" placeholder="628xxxxxxxxxx">
-            <button class="btn-admin" onclick="addToPool()">➕ Tambah & Kirim OTP</button>
+          <button class="btn-admin" onclick="addToPool()">➕ Tambah Slot & Generate QR</button>
+          <div id="poolAddResult" style="margin-top:10px;font-size:12px;display:none"></div>
+          <!-- QR muncul di sini -->
+          <div class="pool-qr-box" id="poolQRBox">
+            <img id="poolQRImg" src="" alt="QR Pool">
+            <p>Scan QR ini dengan HP yang punya nomor WA baru</p>
+            <p style="margin-top:6px;color:#666;font-size:11px">Buka WA → Perangkat Tertaut → Scan QR</p>
           </div>
-          <div id="poolAddResult" style="margin-top:10px;font-size:12px;color:#25d366;display:none"></div>
         </div>
         <div class="admin-section">
           <h4>STOK NOMOR WA</h4>
@@ -226,11 +231,9 @@ Perkenalkan layanan kami untuk kebutuhan kamu.
         </div>
       </div>
     </div>
-    <!-- Users -->
     <div id="tabUsers" class="admin-tab-content">
       <div id="usersTableWrap"><div class="empty-state">Loading...</div></div>
     </div>
-    <!-- Keys -->
     <div id="tabKeys" class="admin-tab-content">
       <div class="admin-grid">
         <div class="admin-section">
@@ -253,8 +256,7 @@ Perkenalkan layanan kami untuk kebutuhan kamu.
 </div>
 <script>
 const socket = io();
-let suksesBlast=0, gagalBlast=0, inboxCount=0;
-let myData = {};
+let suksesBlast=0, gagalBlast=0, inboxCount=0, myData={};
 
 socket.on('connect', () => socket.emit('join-me'));
 socket.emit('join-me');
@@ -272,6 +274,9 @@ async function init() {
         wb.textContent = `📱 ${data.assignedNomor}`;
         wb.style.display = 'inline-block';
         document.getElementById('btnReset').style.display = 'none';
+        document.getElementById('poolSection').style.display = 'block';
+        document.getElementById('loadingSection').style.display = 'none';
+        document.getElementById('poolNomor').textContent = data.assignedNomor;
     }
     const banner = document.getElementById('licenseBanner');
     if (data.licenseActive) {
@@ -284,31 +289,38 @@ async function init() {
     const stRes  = await fetch('/api/status');
     const stData = await stRes.json();
     updateWAStatus(stData.status, stData.status==='connected' ? `✅ Terhubung: ${stData.nomor}` : 'Menghubungkan...');
-    if (stData.mode==='pool' && data.assignedNomor) {
-        document.getElementById('poolSection').style.display='block';
-        document.getElementById('loadingSection').style.display='none';
+    if (data.assignedNomor) {
         document.getElementById('poolMsg').textContent = stData.status==='connected' ? '✅ Nomor Pool Aktif' : '⏳ Menghubungkan...';
-        document.getElementById('poolNomor').textContent = data.assignedNomor;
     }
     if (data.licenseActive && stData.status==='connected') document.getElementById('btnBlast').disabled=false;
 }
 
 socket.on('status', ({ status, msg }) => {
     updateWAStatus(status, msg);
-    if (status==='connected') { fetch('/api/me').then(r=>r.json()).then(d=>{ if(d.licenseActive) document.getElementById('btnBlast').disabled=false; }); }
+    if (status==='connected') fetch('/api/me').then(r=>r.json()).then(d=>{ if(d.licenseActive) document.getElementById('btnBlast').disabled=false; });
     else document.getElementById('btnBlast').disabled=true;
-    if (myData.assignedWA) {
-        document.getElementById('poolMsg').textContent = status==='connected' ? '✅ Nomor Pool Aktif' : '⏳ Menghubungkan...';
-    }
+    if (myData.assignedWA) document.getElementById('poolMsg').textContent = status==='connected' ? '✅ Nomor Pool Aktif' : '⏳ Menghubungkan...';
 });
 
 socket.on('qr', (qrImage) => {
     if (qrImage) { document.getElementById('qrImage').src=qrImage; document.getElementById('qrSection').style.display='block'; document.getElementById('loadingSection').style.display='none'; }
 });
 
-socket.on('pool-otp-sent', ({ poolId, nomor }) => { alert(`📲 OTP dikirim ke ${nomor}. Cek WA nomor tersebut dan masukkan kode OTP.`); loadPool(); });
-socket.on('pool-status', ({ poolId, status, nomor }) => { loadPool(); if (status==='connected') loadUsers(); });
-socket.on('pool-error',  ({ poolId, error }) => { alert('❌ Pool error: ' + error); loadPool(); });
+// Pool QR events
+socket.on('pool-qr', ({ poolId, qr }) => {
+    const box = document.getElementById('poolQRBox');
+    if (qr) {
+        document.getElementById('poolQRImg').src = qr;
+        box.style.display = 'block';
+    } else {
+        box.style.display = 'none';
+    }
+    loadPool();
+});
+socket.on('pool-status', ({ poolId, status, nomor }) => {
+    loadPool();
+    if (status==='connected') { loadUsers(); document.getElementById('poolQRBox').style.display='none'; }
+});
 
 socket.on('blast-start', ({ total }) => {
     suksesBlast=0; gagalBlast=0;
@@ -352,7 +364,7 @@ function updateWAStatus(status, msg) {
     badge.className=`status-badge ${status}`;
     if (status==='connected') { badge.textContent='🟢 '+msg; document.getElementById('loadingSection').style.display='none'; document.getElementById('qrSection').style.display='none'; if(!myData.assignedWA){document.getElementById('connectedSection').style.display='block'; document.getElementById('connectedMsg').textContent=msg;} }
     else if (status==='qr') { badge.textContent='🟡 Scan QR'; document.getElementById('loadingSection').style.display='none'; document.getElementById('connectedSection').style.display='none'; document.getElementById('qrSection').style.display='block'; }
-    else { badge.textContent='🔴 '+(msg||'Terputus'); document.getElementById('loadingSection').style.display='block'; document.getElementById('qrSection').style.display='none'; document.getElementById('connectedSection').style.display='none'; }
+    else { badge.textContent='🔴 '+(msg||'Terputus'); if(!myData.assignedWA){document.getElementById('loadingSection').style.display='block'; document.getElementById('qrSection').style.display='none'; document.getElementById('connectedSection').style.display='none';} }
 }
 function addInboxItem(item) { const list=document.getElementById('inboxList'); const empty=list.querySelector('.empty-state'); if(empty) empty.remove(); const el=document.createElement('div'); el.className='inbox-item'; el.innerHTML=`<div class="inbox-from">📱 ${item.from}</div><div class="inbox-text">${item.text}</div><div class="inbox-time">${item.time}</div>`; list.prepend(el); }
 function hitungNomor() { const lines=document.getElementById('inputNomor').value.split('\n').map(n=>n.trim()).filter(n=>/^62\d{8,13}$/.test(n)); document.getElementById('nomorCount').textContent=lines.length+' nomor valid'; }
@@ -365,15 +377,12 @@ async function uploadFile(input) { const file=input.files[0]; if(!file) return; 
 function toggleAdmin() { const p=document.getElementById('adminPanel'); p.style.display=p.style.display==='none'?'block':'none'; if(p.style.display==='block'){loadPool();loadUsers();} }
 function switchAdminTab(tab) { document.querySelectorAll('.admin-tab').forEach((el,i)=>el.classList.toggle('active',['pool','users','keys'][i]===tab)); document.querySelectorAll('.admin-tab-content').forEach(el=>el.classList.remove('active')); document.getElementById('tab'+tab.charAt(0).toUpperCase()+tab.slice(1)).classList.add('active'); if(tab==='pool') loadPool(); if(tab==='users') loadUsers(); if(tab==='keys') loadKeys(); }
 
-// ─── WA Pool Admin ───────────────────────────────────────────────────────────
 async function addToPool() {
-    const nomor=document.getElementById('poolNomorInput').value.trim();
-    if(!nomor) return alert('Masukkan nomor!');
-    const res=await fetch('/api/admin/wa-pool/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nomor})});
+    const res=await fetch('/api/admin/wa-pool/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
     const data=await res.json();
     const el=document.getElementById('poolAddResult');
     el.style.display='block'; el.style.color=data.success?'#25d366':'#ff6b6b'; el.textContent=data.msg||data.error;
-    if(data.success){document.getElementById('poolNomorInput').value='';loadPool();}
+    if(data.success) loadPool();
 }
 
 async function loadPool() {
@@ -382,13 +391,14 @@ async function loadPool() {
     const wrap=document.getElementById('poolTableWrap');
     if(!pool.length){wrap.innerHTML='<div class="empty-state">Belum ada nomor di pool</div>';return;}
     wrap.innerHTML=`<table class="pool-table"><thead><tr><th>Nomor</th><th>Status</th><th>Assigned</th><th>Aksi</th></tr></thead><tbody>${
-        pool.map(p=>`<tr><td>${p.nomor||'-'}</td><td><span class="pill ${p.status}">${p.status}</span></td><td>${p.assignedTo||'-'}</td><td><button class="btn-danger" onclick="deletePool('${p.id}')">🗑</button></td></tr>`).join('')
+        pool.map(p=>`<tr><td>${p.nomor||'(scanning...)'}</td><td><span class="pill ${p.status}">${p.status}</span></td><td>${p.assignedTo||'-'}</td><td><button class="btn-danger" onclick="deletePool('${p.id}')">🗑</button></td></tr>`).join('')
     }</tbody></table>`;
 }
 
 async function deletePool(id) {
     if(!confirm('Hapus nomor dari pool?')) return;
     await fetch(`/api/admin/wa-pool/${id}`,{method:'DELETE'});
+    document.getElementById('poolQRBox').style.display='none';
     loadPool(); loadUsers();
 }
 
@@ -400,13 +410,12 @@ async function loadUsers() {
     if(!users.length){wrap.innerHTML='<div class="empty-state">Belum ada user</div>';return;}
     wrap.innerHTML=`<table class="users-table"><thead><tr><th>Username</th><th>Plan</th><th>Quota</th><th>Nomor WA</th><th>Assign</th></tr></thead><tbody>${
         users.map(u=>`<tr>
-            <td>${u.username}</td>
-            <td>${u.plan||'-'}</td>
+            <td>${u.username}</td><td>${u.plan||'-'}</td>
             <td>${u.quotaTerpakai}/${u.quotaHarian}</td>
             <td>${u.assignedNomor||'<span style="color:#666">-</span>'}</td>
             <td>
                 <select onchange="assignWA('${u.id}',this.value)" style="background:#0f1117;border:1px solid #2a3448;color:#e0e0e0;padding:4px 6px;border-radius:4px;font-size:11px">
-                    <option value="">-- Pilih Nomor --</option>
+                    <option value="">-- Pilih --</option>
                     ${pool.filter(p=>p.status==='connected').map(p=>`<option value="${p.id}" ${u.assignedWA===p.id?'selected':''}>${p.nomor}</option>`).join('')}
                 </select>
                 ${u.assignedWA?`<button class="btn-danger" style="margin-left:4px" onclick="unassignWA('${u.id}')">✕</button>`:''}
@@ -419,17 +428,13 @@ async function assignWA(userId, poolId) {
     if(!poolId) return;
     const res=await fetch('/api/admin/wa-pool/assign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({poolId,userId})});
     const data=await res.json();
-    if(data.success) { alert(data.msg); loadUsers(); }
-    else alert('❌ '+data.error);
+    if(data.success) { alert(data.msg); loadUsers(); } else alert('❌ '+data.error);
 }
-
 async function unassignWA(userId) {
     await fetch('/api/admin/wa-pool/unassign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId})});
     loadUsers();
 }
-
 async function generateKey() { const plan=document.getElementById('aPlan').value; const quota=document.getElementById('aQuota').value; const durasi=document.getElementById('aDurasi').value; if(!quota||!durasi) return alert('Isi quota dan durasi!'); const res=await fetch('/api/admin/generate-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan,quotaHarian:quota,durasiHari:durasi})}); const data=await res.json(); if(data.success){const el=document.getElementById('keyResult');el.textContent='🔑 '+data.key;el.style.display='block';loadKeys();}else alert('❌ '+data.error); }
-
 async function loadKeys() { const res=await fetch('/api/admin/licenses'); const keys=await res.json(); const wrap=document.getElementById('keysTableWrap'); if(!keys.length){wrap.innerHTML='<div class="empty-state">Belum ada key</div>';return;} wrap.innerHTML=`<table class="pool-table"><thead><tr><th>Key</th><th>Plan</th><th>Quota</th><th>Status</th></tr></thead><tbody>${keys.map(k=>`<tr><td style="font-size:11px;word-break:break-all">${k.key}</td><td>${k.plan}</td><td>${k.quotaHarian}/hr</td><td>${k.usedBy?'<span style="color:#ff6b6b">Terpakai</span>':'<span style="color:#25d366">Tersedia</span>'}</td></tr>`).join('')}</tbody></table>`; }
 
 init();
