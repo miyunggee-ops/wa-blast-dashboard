@@ -8,7 +8,7 @@
 <script src="/protect.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
-textarea, input { user-select: text !important; -webkit-user-select: text !important; }
+textarea, input, select { user-select: text !important; -webkit-user-select: text !important; }
 body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; }
 .header { background: linear-gradient(135deg, #1a1f2e, #252d3d); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #2a3448; }
 .header h1 { font-size: 17px; color: #fff; }
@@ -103,6 +103,9 @@ body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0;
 .admin-form input, .admin-form select { background: #0f1117; border: 1px solid #2a3448; border-radius: 6px; color: #e0e0e0; padding: 8px 10px; font-size: 12px; }
 .btn-admin { background: #ffd700; color: #000; padding: 9px; border-radius: 6px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; width: 100%; }
 .btn-danger { background: #ff4757; color: #fff; padding: 5px 10px; border-radius: 5px; border: none; font-size: 11px; cursor: pointer; }
+.btn-warn { background: #ff9500; color: #000; padding: 5px 10px; border-radius: 5px; border: none; font-size: 11px; cursor: pointer; }
+.btn-info { background: #2a3448; color: #e0e0e0; padding: 5px 10px; border-radius: 5px; border: none; font-size: 11px; cursor: pointer; }
+.btn-success-sm { background: #25d366; color: #000; padding: 5px 10px; border-radius: 5px; border: none; font-size: 11px; cursor: pointer; }
 .key-result { background: #0f1117; border-radius: 6px; padding: 10px; font-size: 13px; color: #25d366; margin-top: 8px; display: none; word-break: break-all; }
 .pool-table, .users-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .pool-table th, .users-table th { color: #666; font-weight: 600; padding: 6px 8px; text-align: left; border-bottom: 1px solid #2a3448; }
@@ -111,9 +114,23 @@ body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0;
 .pill.connected { background: #1a4731; color: #25d366; }
 .pill.disconnected,.pill.pending,.pill.expired { background: #3d1a1a; color: #ff6b6b; }
 .pill.qr { background: #3d3500; color: #ffd700; }
+.pill.banned { background: #3d1a1a; color: #ff4757; }
+.pill.active { background: #1a4731; color: #25d366; }
 .pool-qr-box { background: #0f1117; border: 1px solid #25d366; border-radius: 10px; padding: 14px; text-align: center; margin-top: 10px; display: none; }
 .pool-qr-box img { width: 180px; height: 180px; background: #fff; padding: 6px; border-radius: 8px; }
 .pool-qr-box p { font-size: 12px; color: #aaa; margin-top: 8px; }
+/* Modal */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 999; align-items: center; justify-content: center; }
+.modal-overlay.show { display: flex; }
+.modal-box { background: #1a1f2e; border: 1px solid #2a3448; border-radius: 14px; padding: 24px; width: 460px; max-width: 95vw; position: relative; max-height: 90vh; overflow-y: auto; }
+.modal-box h4 { color: #ffd700; font-size: 13px; margin-bottom: 16px; }
+.modal-close { position: absolute; top: 12px; right: 14px; background: none; border: none; color: #aaa; font-size: 18px; cursor: pointer; }
+.detail-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #2a3448; font-size: 12px; }
+.detail-row .label { color: #666; }
+.detail-row .val { color: #fff; font-weight: 500; }
+.modal-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.modal-actions .action-group { display: flex; gap: 8px; align-items: center; }
+.modal-actions input { background: #0f1117; border: 1px solid #2a3448; border-radius: 6px; color: #e0e0e0; padding: 7px 10px; font-size: 12px; flex: 1; }
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-thumb { background: #2a3448; border-radius: 2px; }
 </style>
@@ -213,6 +230,7 @@ body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0;
       <div class="admin-tab" onclick="switchAdminTab('users')">&#128101; Users</div>
       <div class="admin-tab" onclick="switchAdminTab('keys')">&#128273; License Keys</div>
     </div>
+    <!-- WA Pool -->
     <div id="tabPool" class="admin-tab-content active">
       <div class="admin-grid">
         <div class="admin-section">
@@ -231,9 +249,11 @@ body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0;
         </div>
       </div>
     </div>
+    <!-- Users -->
     <div id="tabUsers" class="admin-tab-content">
       <div id="usersTableWrap"><div class="empty-state">Loading...</div></div>
     </div>
+    <!-- Keys -->
     <div id="tabKeys" class="admin-tab-content">
       <div class="admin-grid">
         <div class="admin-section">
@@ -254,12 +274,26 @@ body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0;
     </div>
   </div>
 </div>
+
+<!-- Modal Detail User -->
+<div class="modal-overlay" id="userModal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal()">&#10005;</button>
+    <h4>&#128100; Detail User</h4>
+    <div id="modalContent"></div>
+    <div class="modal-actions" id="modalActions"></div>
+  </div>
+</div>
+
 <script>
 const socket = io();
 let suksesBlast=0,gagalBlast=0,inboxCount=0,myData={};
 socket.on('connect',()=>socket.emit('join-me'));
 socket.emit('join-me');
-async function init(){const res=await fetch('/api/me');const data=await res.json();if(!data.success){window.location.href='/';return;}myData=data;document.getElementById('uName').textContent=data.username;document.getElementById('uPlan').textContent=data.plan&&data.plan!=='-'?'&#128230; '+data.plan:'&#128274; No License';document.getElementById('quotaBadge').textContent='&#9889; '+data.quotaTerpakai+' / '+data.quotaHarian;if(data.assignedNomor){const wb=document.getElementById('waBadge');wb.textContent='&#128241; '+data.assignedNomor;wb.style.display='inline-block';document.getElementById('btnReset').style.display='none';document.getElementById('poolSection').style.display='block';document.getElementById('loadingSection').style.display='none';document.getElementById('poolNomor').textContent=data.assignedNomor;}const banner=document.getElementById('licenseBanner');if(data.licenseActive){banner.classList.add('active');const exp=data.licenseExpiry?new Date(data.licenseExpiry).toLocaleDateString('id-ID'):'&#8734;';document.getElementById('licenseMsg').textContent='&#9989; Lisensi aktif — '+data.plan+' | s/d '+exp+' | Sisa quota: '+data.sisaQuota;document.querySelector('.license-form').style.display='none';}if(data.role==='admin')document.getElementById('adminToggleWrap').style.display='block';const stRes=await fetch('/api/status');const stData=await stRes.json();updateWAStatus(stData.status,stData.status==='connected'?'&#9989; Terhubung: '+stData.nomor:'Menghubungkan...');if(data.assignedNomor)document.getElementById('poolMsg').textContent=stData.status==='connected'?'&#9989; Nomor Pool Aktif':'&#9203; Menghubungkan...';if(data.licenseActive&&stData.status==='connected')document.getElementById('btnBlast').disabled=false;}
+// Force logout handler
+socket.on('force-logout',({msg})=>{ alert('\\u26a0\\ufe0f '+msg); window.location.href='/'; });
+
+async function init(){const res=await fetch('/api/me');const data=await res.json();if(!data.success){window.location.href='/';return;}myData=data;document.getElementById('uName').textContent=data.username;document.getElementById('uPlan').textContent=data.plan&&data.plan!=='-'?'&#128230; '+data.plan:'&#128274; No License';document.getElementById('quotaBadge').textContent='&#9889; '+data.quotaTerpakai+' / '+data.quotaHarian;if(data.assignedNomor){const wb=document.getElementById('waBadge');wb.textContent='&#128241; '+data.assignedNomor;wb.style.display='inline-block';document.getElementById('btnReset').style.display='none';document.getElementById('poolSection').style.display='block';document.getElementById('loadingSection').style.display='none';document.getElementById('poolNomor').textContent=data.assignedNomor;}const banner=document.getElementById('licenseBanner');if(data.licenseActive){banner.classList.add('active');const exp=data.licenseExpiry?new Date(data.licenseExpiry).toLocaleDateString('id-ID'):'&#8734;';document.getElementById('licenseMsg').textContent='&#9989; Lisensi aktif &#8212; '+data.plan+' | s/d '+exp+' | Sisa quota: '+data.sisaQuota;document.querySelector('.license-form').style.display='none';}if(data.role==='admin')document.getElementById('adminToggleWrap').style.display='block';const stRes=await fetch('/api/status');const stData=await stRes.json();updateWAStatus(stData.status,stData.status==='connected'?'&#9989; Terhubung: '+stData.nomor:'Menghubungkan...');if(data.assignedNomor)document.getElementById('poolMsg').textContent=stData.status==='connected'?'&#9989; Nomor Pool Aktif':'&#9203; Menghubungkan...';if(data.licenseActive&&stData.status==='connected')document.getElementById('btnBlast').disabled=false;}
 socket.on('status',({status,msg})=>{updateWAStatus(status,msg);if(status==='connected')fetch('/api/me').then(r=>r.json()).then(d=>{if(d.licenseActive)document.getElementById('btnBlast').disabled=false;});else document.getElementById('btnBlast').disabled=true;if(myData.assignedWA)document.getElementById('poolMsg').textContent=status==='connected'?'&#9989; Nomor Pool Aktif':'&#9203; Menghubungkan...';});
 socket.on('qr',(qrImage)=>{if(qrImage){document.getElementById('qrImage').src=qrImage;document.getElementById('qrSection').style.display='block';document.getElementById('loadingSection').style.display='none';}});
 socket.on('pool-qr',({poolId,qr})=>{const box=document.getElementById('poolQRBox');if(qr){document.getElementById('poolQRImg').src=qr;box.style.display='block';}else{box.style.display='none';}loadPool();});
@@ -270,6 +304,7 @@ socket.on('blast-done',({total,sukses,gagal})=>{document.getElementById('blastBa
 socket.on('blast-stopped',()=>{document.getElementById('blastBadge').style.display='none';document.getElementById('btnBlast').style.display='block';document.getElementById('btnStop').style.display='none';document.getElementById('btnBlast').disabled=false;});
 socket.on('inbox',(item)=>{addInboxItem(item);inboxCount++;const b=document.getElementById('inboxBadge');b.style.display='inline-block';b.textContent=inboxCount;});
 socket.on('inbox-all',(items)=>{if(!items.length)return;document.getElementById('inboxList').innerHTML='';items.forEach(addInboxItem);inboxCount=items.length;const b=document.getElementById('inboxBadge');b.style.display='inline-block';b.textContent=inboxCount;});
+
 function updateWAStatus(status,msg){const badge=document.getElementById('statusBadge');badge.className='status-badge '+status;if(status==='connected'){badge.textContent='&#129001; '+msg;document.getElementById('loadingSection').style.display='none';document.getElementById('qrSection').style.display='none';if(!myData.assignedWA){document.getElementById('connectedSection').style.display='block';document.getElementById('connectedMsg').textContent=msg;}}else if(status==='qr'){badge.textContent='&#128993; Scan QR';document.getElementById('loadingSection').style.display='none';document.getElementById('connectedSection').style.display='none';document.getElementById('qrSection').style.display='block';}else{badge.textContent='&#128308; '+(msg||'Terputus');if(!myData.assignedWA){document.getElementById('loadingSection').style.display='block';document.getElementById('qrSection').style.display='none';document.getElementById('connectedSection').style.display='none';}}}
 function addInboxItem(item){const list=document.getElementById('inboxList');const empty=list.querySelector('.empty-state');if(empty)empty.remove();const el=document.createElement('div');el.className='inbox-item';el.innerHTML='<div class="inbox-from">&#128241; '+item.from+'</div><div class="inbox-text">'+item.text+'</div><div class="inbox-time">'+item.time+'</div>';list.prepend(el);}
 function hitungNomor(){const lines=document.getElementById('inputNomor').value.split('\n').map(n=>n.trim()).filter(n=>/^62\d{8,13}$/.test(n));document.getElementById('nomorCount').textContent=lines.length+' nomor valid';}
@@ -281,14 +316,98 @@ async function aktivasiKey(){const key=document.getElementById('inputKey').value
 async function uploadFile(input){const file=input.files[0];if(!file)return;const fd=new FormData();fd.append('file',file);const res=await fetch('/api/upload-nomor',{method:'POST',body:fd});const data=await res.json();if(data.success){document.getElementById('inputNomor').value=data.nomor.join('\n');document.getElementById('nomorCount').textContent=data.total+' nomor valid dari file';}else alert('&#10060; '+data.error);input.value='';}
 function toggleAdmin(){const p=document.getElementById('adminPanel');p.style.display=p.style.display==='none'?'block':'none';if(p.style.display==='block'){loadPool();loadUsers();}}
 function switchAdminTab(tab){document.querySelectorAll('.admin-tab').forEach((el,i)=>el.classList.toggle('active',['pool','users','keys'][i]===tab));document.querySelectorAll('.admin-tab-content').forEach(el=>el.classList.remove('active'));document.getElementById('tab'+tab.charAt(0).toUpperCase()+tab.slice(1)).classList.add('active');if(tab==='pool')loadPool();if(tab==='users')loadUsers();if(tab==='keys')loadKeys();}
+
+// WA Pool
 async function addToPool(){const res=await fetch('/api/admin/wa-pool/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});const data=await res.json();const el=document.getElementById('poolAddResult');el.style.display='block';el.style.color=data.success?'#25d366':'#ff6b6b';el.textContent=data.msg||data.error;if(data.success)loadPool();}
 async function loadPool(){const res=await fetch('/api/admin/wa-pool');const pool=await res.json();const wrap=document.getElementById('poolTableWrap');if(!pool.length){wrap.innerHTML='<div class="empty-state">Belum ada nomor di pool</div>';return;}wrap.innerHTML='<table class="pool-table"><thead><tr><th>Nomor</th><th>Status</th><th>Assigned</th><th>Aksi</th></tr></thead><tbody>'+pool.map(p=>'<tr><td>'+(p.nomor||'(scanning...)')+'</td><td><span class="pill '+p.status+'">'+p.status+'</span></td><td>'+(p.assignedTo||'-')+'</td><td><button class="btn-danger" onclick="deletePool(\''+p.id+'\')">&#128465;</button></td></tr>').join('')+'</tbody></table>';}
 async function deletePool(id){if(!confirm('Hapus nomor dari pool?'))return;await fetch('/api/admin/wa-pool/'+id,{method:'DELETE'});document.getElementById('poolQRBox').style.display='none';loadPool();loadUsers();}
-async function loadUsers(){const res=await fetch('/api/admin/users');const users=await res.json();const pool=(await(await fetch('/api/admin/wa-pool')).json());const wrap=document.getElementById('usersTableWrap');if(!users.length){wrap.innerHTML='<div class="empty-state">Belum ada user</div>';return;}wrap.innerHTML='<table class="users-table"><thead><tr><th>Username</th><th>Plan</th><th>Quota</th><th>Nomor WA</th><th>Assign</th></tr></thead><tbody>'+users.map(u=>'<tr><td>'+u.username+'</td><td>'+(u.plan||'-')+'</td><td>'+u.quotaTerpakai+'/'+u.quotaHarian+'</td><td>'+(u.assignedNomor||'<span style="color:#666">-</span>')+'</td><td><select onchange="assignWA(\''+u.id+'\',this.value)" style="background:#0f1117;border:1px solid #2a3448;color:#e0e0e0;padding:4px 6px;border-radius:4px;font-size:11px"><option value="">-- Pilih --</option>'+pool.filter(p=>p.status==='connected').map(p=>'<option value="'+p.id+'"'+(u.assignedWA===p.id?' selected':'')+'>'+p.nomor+'</option>').join('')+'</select>'+(u.assignedWA?'<button class="btn-danger" style="margin-left:4px" onclick="unassignWA(\''+u.id+'\')">&#10005;</button>':'')+'</td></tr>').join('')+'</tbody></table>';}
+
+// Users - dengan fitur lengkap
+async function loadUsers(){
+    const res=await fetch('/api/admin/users');
+    const users=await res.json();
+    const pool=(await(await fetch('/api/admin/wa-pool')).json());
+    const wrap=document.getElementById('usersTableWrap');
+    if(!users.length){wrap.innerHTML='<div class="empty-state">Belum ada user</div>';return;}
+    wrap.innerHTML='<table class="users-table"><thead><tr><th>Username</th><th>Plan</th><th>Quota</th><th>Exp</th><th>Status</th><th>Nomor WA</th><th>Aksi</th></tr></thead><tbody>'+
+    users.map(u=>{
+        const exp=u.licenseExpiry?new Date(u.licenseExpiry).toLocaleDateString('id-ID'):'-';
+        const statusPill=u.banned?'<span class="pill banned">Banned</span>':(u.licenseActive?'<span class="pill active">Aktif</span>':'<span class="pill disconnected">Non-aktif</span>');
+        const waSelect='<select onchange="assignWA(\''+u.id+'\',this.value)" style="background:#0f1117;border:1px solid #2a3448;color:#e0e0e0;padding:3px 6px;border-radius:4px;font-size:11px"><option value="">-- Pilih --</option>'+pool.filter(p=>p.status==='connected').map(p=>'<option value="'+p.id+'"'+(u.assignedWA===p.id?' selected':'')+'>'+p.nomor+'</option>').join('')+'</select>'+(u.assignedWA?'<button class="btn-danger" style="margin-left:4px" onclick="unassignWA(\''+u.id+'\')">&#10005;</button>':'');
+        return '<tr><td>'+u.username+'</td><td>'+(u.plan||'-')+'</td><td>'+u.quotaTerpakai+'/'+u.quotaHarian+'</td><td style="font-size:11px">'+exp+'</td><td>'+statusPill+'</td><td>'+waSelect+'</td><td style="white-space:nowrap"><button class="btn-info" onclick="showUserDetail(\''+u.id+'\')" title="Detail">&#128269;</button></td></tr>';
+    }).join('')+'</tbody></table>';
+}
+
+// Modal detail user
+async function showUserDetail(userId){
+    const res=await fetch('/api/admin/users/'+userId);
+    const data=await res.json();
+    if(!data.success) return alert('Error: '+data.error);
+    const u=data.user;
+    const exp=u.licenseExpiry?new Date(u.licenseExpiry).toLocaleDateString('id-ID'):'-';
+    document.getElementById('modalContent').innerHTML=
+        '<div class="detail-row"><span class="label">Username</span><span class="val">'+u.username+'</span></div>'+
+        '<div class="detail-row"><span class="label">Role</span><span class="val">'+u.role+'</span></div>'+
+        '<div class="detail-row"><span class="label">Plan</span><span class="val">'+(u.plan||'-')+'</span></div>'+
+        '<div class="detail-row"><span class="label">Status</span><span class="val">'+(u.banned?'&#128683; Banned':u.licenseActive?'&#9989; Aktif':'&#10060; Non-aktif')+'</span></div>'+
+        '<div class="detail-row"><span class="label">Lisensi s/d</span><span class="val">'+exp+'</span></div>'+
+        '<div class="detail-row"><span class="label">Quota</span><span class="val">'+u.quotaTerpakai+' / '+u.quotaHarian+' per hari</span></div>'+
+        '<div class="detail-row"><span class="label">Nomor WA</span><span class="val">'+(u.assignedNomor||'-')+'</span></div>'+
+        '<div class="detail-row"><span class="label">Daftar</span><span class="val">'+new Date(u.createdAt).toLocaleDateString('id-ID')+'</span></div>';
+    document.getElementById('modalActions').innerHTML=
+        // Reset password
+        '<div><p style="font-size:11px;color:#aaa;margin-bottom:6px">&#128273; Reset Password</p><div class="action-group"><input type="password" id="newPassInput" placeholder="Password baru (min 6 karakter)"><button class="btn-success-sm" onclick="doResetPass(\''+u.id+'\')">Reset</button></div></div>'+
+        // Extend lisensi
+        '<div><p style="font-size:11px;color:#aaa;margin-bottom:6px">&#128197; Extend Lisensi</p><div class="action-group"><input type="number" id="extendDays" placeholder="Tambah berapa hari?" min="1"><button class="btn-success-sm" onclick="doExtend(\''+u.id+'\')">Extend</button></div></div>'+
+        // Ban/Unban
+        '<div class="action-group">'+(u.banned?
+            '<button class="btn-success-sm" onclick="doBan(\''+u.id+'\',true)" style="width:100%">&#9989; Unban User</button>':
+            '<button class="btn-warn" onclick="doBan(\''+u.id+'\',false)" style="width:100%">&#128683; Ban User</button>')+
+        '</div>'+
+        // Hapus
+        '<div class="action-group"><button class="btn-danger" onclick="doDelete(\''+u.id+'\',\''+u.username+'\')" style="width:100%">&#128465; Hapus User</button></div>';
+    document.getElementById('userModal').classList.add('show');
+}
+
+function closeModal(){ document.getElementById('userModal').classList.remove('show'); }
+
+async function doResetPass(userId){
+    const pw=document.getElementById('newPassInput').value;
+    if(!pw||pw.length<6) return alert('Password min. 6 karakter!');
+    const res=await fetch('/api/admin/users/'+userId+'/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({newPassword:pw})});
+    const data=await res.json();
+    if(data.success){alert(data.msg);document.getElementById('newPassInput').value='';}else alert('&#10060; '+data.error);
+}
+
+async function doExtend(userId){
+    const days=document.getElementById('extendDays').value;
+    if(!days||days<1) return alert('Masukkan jumlah hari!');
+    const res=await fetch('/api/admin/users/'+userId+'/extend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({days})});
+    const data=await res.json();
+    if(data.success){alert(data.msg);closeModal();loadUsers();}else alert('&#10060; '+data.error);
+}
+
+async function doBan(userId,isCurrentlyBanned){
+    const action=isCurrentlyBanned?'unban':'ban';
+    if(!confirm((isCurrentlyBanned?'Unban':'Ban')+' user ini?')) return;
+    const res=await fetch('/api/admin/users/'+userId+'/ban',{method:'POST'});
+    const data=await res.json();
+    if(data.success){alert(data.msg);closeModal();loadUsers();}else alert('&#10060; '+data.error);
+}
+
+async function doDelete(userId,username){
+    if(!confirm('Hapus user "'+username+'"? Tidak bisa dibatalkan!')) return;
+    const res=await fetch('/api/admin/users/'+userId,{method:'DELETE'});
+    const data=await res.json();
+    if(data.success){alert(data.msg);closeModal();loadUsers();}else alert('&#10060; '+data.error);
+}
+
 async function assignWA(userId,poolId){if(!poolId)return;const res=await fetch('/api/admin/wa-pool/assign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({poolId,userId})});const data=await res.json();if(data.success){alert(data.msg);loadUsers();}else alert('&#10060; '+data.error);}
 async function unassignWA(userId){await fetch('/api/admin/wa-pool/unassign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId})});loadUsers();}
+
 async function generateKey(){const plan=document.getElementById('aPlan').value;const quota=document.getElementById('aQuota').value;const durasi=document.getElementById('aDurasi').value;if(!quota||!durasi)return alert('Isi quota dan durasi!');const res=await fetch('/api/admin/generate-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan,quotaHarian:quota,durasiHari:durasi})});const data=await res.json();if(data.success){const el=document.getElementById('keyResult');el.textContent='&#128273; '+data.key;el.style.display='block';loadKeys();}else alert('&#10060; '+data.error);}
 async function loadKeys(){const res=await fetch('/api/admin/licenses');const keys=await res.json();const wrap=document.getElementById('keysTableWrap');if(!keys.length){wrap.innerHTML='<div class="empty-state">Belum ada key</div>';return;}wrap.innerHTML='<table class="pool-table"><thead><tr><th>Key</th><th>Plan</th><th>Quota</th><th>Status</th></tr></thead><tbody>'+keys.map(k=>'<tr><td style="font-size:11px;word-break:break-all">'+k.key+'</td><td>'+k.plan+'</td><td>'+k.quotaHarian+'/hr</td><td>'+(k.usedBy?'<span style="color:#ff6b6b">Terpakai</span>':'<span style="color:#25d366">Tersedia</span>')+'</td></tr>').join('')+'</tbody></table>';}
+
 init();
 </script>
 </body>
