@@ -2,11 +2,12 @@
   {
     "id": "admin-001",
     "username": "admin",
-    "password": "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lh31",
+    "password": "$2b$10$VNiak9905qt1ubBHtJFA4uB4H0Sq4mFY.CubdFas/FfbGzy0S/Y0S",
     "role": "admin",
     "licenseKey": "ADMIN-FREE-FOREVER",
     "licenseActive": true,
     "licenseExpiry": null,
+    "plan": "Admin",
     "quotaHarian": 999999,
     "quotaTerpakai": 0,
     "lastReset": "",
