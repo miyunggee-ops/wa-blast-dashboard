@@ -1,23 +1,347 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MESIN-WA Dashboard</title>
+<script src="/socket.io/socket.io.js"></script>
+<script src="/protect.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+textarea, input, select { user-select: text !important; -webkit-user-select: text !important; }
+body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; }
+.header { background: linear-gradient(135deg, #1a1f2e, #252d3d); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #2a3448; }
+.header h1 { font-size: 17px; color: #fff; }
+.header h1 span { color: #25d366; }
+.header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.user-info { font-size: 12px; color: #aaa; }
+.user-info strong { color: #fff; }
+.quota-badge { background: #252d3d; border: 1px solid #2a3448; border-radius: 20px; padding: 4px 12px; font-size: 12px; color: #ffd700; }
+.wa-badge { background: #1a4731; border: 1px solid #25d366; border-radius: 20px; padding: 4px 12px; font-size: 12px; color: #25d366; }
+.status-badge { padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.status-badge.connected { background: #1a4731; color: #25d366; }
+.status-badge.qr { background: #3d3500; color: #ffd700; }
+.status-badge.disconnected,.status-badge.connecting,.status-badge.pending { background: #3d1a1a; color: #ff6b6b; }
+.btn-sm { padding: 6px 12px; border-radius: 6px; border: none; font-size: 12px; font-weight: 600; cursor: pointer; }
+.btn-logout { background: #2a3448; color: #aaa; }
+.btn-logout:hover { background: #3a4560; color: #fff; }
+.container { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 20px; max-width: 1400px; margin: 0 auto; }
+.license-banner { grid-column: 1/-1; background: #3d1a1a; border: 1px solid #ff4757; border-radius: 10px; padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.license-banner.active { background: #1a4731; border-color: #25d366; }
+.license-banner p { font-size: 13px; }
+.license-banner.active p { color: #25d366; }
+.license-banner:not(.active) p { color: #ff6b6b; }
+.license-form { display: flex; gap: 8px; }
+.license-form input { background: #0f1117; border: 1px solid #2a3448; border-radius: 6px; color: #e0e0e0; padding: 7px 10px; font-size: 13px; width: 220px; }
+.btn-aktivasi { background: #25d366; color: #000; padding: 7px 16px; border-radius: 6px; border: none; font-size: 13px; font-weight: 700; cursor: pointer; }
+.card { background: #1a1f2e; border-radius: 12px; border: 1px solid #2a3448; overflow: hidden; }
+.card-header { padding: 13px 18px; background: #252d3d; border-bottom: 1px solid #2a3448; display: flex; align-items: center; gap: 8px; }
+.card-header h2 { font-size: 13px; font-weight: 600; color: #fff; }
+.card-body { padding: 18px; }
+.pool-info { text-align: center; padding: 28px 20px; }
+.pool-info .icon { font-size: 44px; }
+.pool-info p { color: #25d366; font-size: 15px; font-weight: 600; margin-top: 8px; }
+.pool-info small { color: #aaa; font-size: 12px; }
+.qr-wrap { text-align: center; padding: 20px; }
+.qr-wrap img { width: 210px; height: 210px; border-radius: 12px; background: #fff; padding: 8px; }
+.qr-wrap p { margin-top: 10px; color: #aaa; font-size: 12px; }
+.connected-info { text-align: center; padding: 28px 20px; }
+.connected-info .icon { font-size: 44px; }
+.connected-info p { color: #25d366; font-size: 15px; font-weight: 600; margin-top: 8px; }
+.connected-info small { color: #aaa; font-size: 12px; }
+.form-group { margin-bottom: 13px; }
+.form-group label { display: block; font-size: 11px; color: #aaa; margin-bottom: 5px; font-weight: 600; letter-spacing: 0.5px; }
+.form-group textarea { width: 100%; background: #0f1117; border: 1px solid #2a3448; border-radius: 8px; color: #e0e0e0; padding: 9px 11px; font-size: 13px; resize: vertical; font-family: inherit; }
+.form-group textarea:focus { outline: none; border-color: #25d366; }
+.upload-area { border: 2px dashed #2a3448; border-radius: 8px; padding: 14px; text-align: center; cursor: pointer; transition: border-color 0.2s; margin-bottom: 8px; }
+.upload-area:hover { border-color: #25d366; }
+.upload-area p { font-size: 12px; color: #666; }
+.upload-area input { display: none; }
+.nomor-count { font-size: 11px; color: #666; margin-top: 4px; }
+.btn { padding: 10px 20px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; width: 100%; }
+.btn-blast { background: #25d366; color: #000; }
+.btn-blast:hover { background: #20bb5a; }
+.btn-blast:disabled { background: #1a4731; color: #25d366; cursor: not-allowed; opacity: 0.6; }
+.btn-stop { background: #ff4757; color: #fff; margin-top: 8px; }
+.btn-reset { background: #2a3448; color: #aaa; font-size: 11px; padding: 6px 12px; width: auto; }
+.btn-reset:hover { background: #3a4560; }
+.progress-bar-wrap { background: #0f1117; border-radius: 6px; height: 7px; margin: 12px 0; overflow: hidden; }
+.progress-bar { height: 100%; background: linear-gradient(90deg, #25d366, #128c7e); border-radius: 6px; transition: width 0.3s; width: 0%; }
+.progress-stats { display: flex; gap: 12px; margin-bottom: 13px; }
+.stat-box { flex: 1; background: #0f1117; border-radius: 8px; padding: 10px; text-align: center; }
+.stat-box .num { font-size: 20px; font-weight: 700; }
+.stat-box .lbl { font-size: 11px; color: #666; margin-top: 2px; }
+.stat-box.sukses .num { color: #25d366; }
+.stat-box.gagal .num { color: #ff6b6b; }
+.stat-box.total .num { color: #fff; }
+.log-list { max-height: 200px; overflow-y: auto; }
+.log-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid #1a1f2e; font-size: 12px; }
+.log-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.log-dot.sukses { background: #25d366; }
+.log-dot.gagal { background: #ff6b6b; }
+.log-no { color: #fff; font-weight: 500; flex: 1; }
+.log-status.sukses { color: #25d366; font-size: 11px; }
+.log-status.gagal { color: #ff6b6b; font-size: 11px; }
+.inbox-list { max-height: 380px; overflow-y: auto; }
+.inbox-item { padding: 11px; background: #0f1117; border-radius: 8px; margin-bottom: 8px; border-left: 3px solid #25d366; }
+.inbox-from { font-size: 13px; font-weight: 600; color: #25d366; }
+.inbox-text { font-size: 13px; color: #ccc; margin-top: 4px; line-height: 1.4; }
+.inbox-time { font-size: 11px; color: #444; margin-top: 4px; }
+.empty-state { text-align: center; padding: 28px; color: #444; font-size: 13px; }
+.badge { display: inline-block; background: #25d366; color: #000; border-radius: 10px; padding: 1px 7px; font-size: 11px; font-weight: 700; }
+.admin-toggle { grid-column: 1/-1; text-align: right; }
+.admin-panel { grid-column: 1/-1; background: #1a1f2e; border-radius: 12px; border: 1px solid #ffd700; padding: 20px; display: none; }
+.admin-panel h3 { color: #ffd700; font-size: 14px; margin-bottom: 16px; }
+.admin-tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+.admin-tab { padding: 7px 16px; border-radius: 6px; border: 1px solid #2a3448; font-size: 12px; font-weight: 600; cursor: pointer; color: #aaa; background: #0f1117; }
+.admin-tab.active { background: #ffd700; color: #000; border-color: #ffd700; }
+.admin-tab-content { display: none; }
+.admin-tab-content.active { display: block; }
+.admin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.admin-section h4 { font-size: 12px; color: #aaa; margin-bottom: 10px; font-weight: 600; }
+.admin-form { display: flex; flex-direction: column; gap: 8px; }
+.admin-form input, .admin-form select { background: #0f1117; border: 1px solid #2a3448; border-radius: 6px; color: #e0e0e0; padding: 8px 10px; font-size: 12px; }
+.btn-admin { background: #ffd700; color: #000; padding: 9px; border-radius: 6px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; width: 100%; }
+.btn-danger { background: #ff4757; color: #fff; padding: 5px 10px; border-radius: 5px; border: none; font-size: 11px; cursor: pointer; }
+.btn-warn { background: #ff9500; color: #000; padding: 5px 10px; border-radius: 5px; border: none; font-size: 11px; cursor: pointer; }
+.btn-info { background: #2a3448; color: #e0e0e0; padding: 5px 10px; border-radius: 5px; border: none; font-size: 11px; cursor: pointer; }
+.btn-success-sm { background: #25d366; color: #000; padding: 5px 10px; border-radius: 5px; border: none; font-size: 11px; cursor: pointer; }
+.key-result { background: #0f1117; border-radius: 6px; padding: 10px; font-size: 13px; color: #25d366; margin-top: 8px; display: none; word-break: break-all; }
+.pool-table, .users-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.pool-table th, .users-table th { color: #666; font-weight: 600; padding: 6px 8px; text-align: left; border-bottom: 1px solid #2a3448; }
+.pool-table td, .users-table td { padding: 6px 8px; border-bottom: 1px solid #1a1f2e; color: #ccc; vertical-align: middle; }
+.pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.pill.connected { background: #1a4731; color: #25d366; }
+.pill.disconnected,.pill.pending,.pill.expired { background: #3d1a1a; color: #ff6b6b; }
+.pill.qr { background: #3d3500; color: #ffd700; }
+.pill.banned { background: #3d1a1a; color: #ff4757; }
+.pill.active { background: #1a4731; color: #25d366; }
+.pool-qr-box { background: #0f1117; border: 1px solid #25d366; border-radius: 10px; padding: 14px; text-align: center; margin-top: 10px; display: none; }
+.pool-qr-box img { width: 180px; height: 180px; background: #fff; padding: 6px; border-radius: 8px; }
+.pool-qr-box p { font-size: 12px; color: #aaa; margin-top: 8px; }
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 999; align-items: center; justify-content: center; }
+.modal-overlay.show { display: flex; }
+.modal-box { background: #1a1f2e; border: 1px solid #2a3448; border-radius: 14px; padding: 24px; width: 460px; max-width: 95vw; position: relative; max-height: 90vh; overflow-y: auto; }
+.modal-box h4 { color: #ffd700; font-size: 13px; margin-bottom: 16px; }
+.modal-close { position: absolute; top: 12px; right: 14px; background: none; border: none; color: #aaa; font-size: 18px; cursor: pointer; }
+.detail-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #2a3448; font-size: 12px; }
+.detail-row .label { color: #666; }
+.detail-row .val { color: #fff; font-weight: 500; }
+.modal-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.modal-actions .action-group { display: flex; gap: 8px; align-items: center; }
+.modal-actions input { background: #0f1117; border: 1px solid #2a3448; border-radius: 6px; color: #e0e0e0; padding: 7px 10px; font-size: 12px; flex: 1; }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-thumb { background: #2a3448; border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>&#9881; <span>MESIN-WA</span> Dashboard</h1>
+  <div class="header-right">
+    <span class="user-info">&#128100; <strong id="uName">-</strong> &nbsp;|&nbsp; <span id="uPlan">-</span></span>
+    <span class="quota-badge" id="quotaBadge">&#9889; 0 / 0</span>
+    <span class="wa-badge" id="waBadge" style="display:none">&#128241; -</span>
+    <span id="statusBadge" class="status-badge disconnected">&#9203; ...</span>
+    <button class="btn-sm btn-reset" id="btnReset" onclick="resetSesi()">&#128260; Reset</button>
+    <button class="btn-sm btn-logout" onclick="doLogout()">&#128682; Logout</button>
+  </div>
+</div>
+<div class="container">
+  <div id="licenseBanner" class="license-banner">
+    <p id="licenseMsg">&#9888;&#65039; Lisensi belum aktif. Masukkan key untuk mulai blast.</p>
+    <div class="license-form">
+      <input type="text" id="inputKey" placeholder="STARTER-XXXXXXXX" style="text-transform:uppercase">
+      <button class="btn-aktivasi" onclick="aktivasiKey()">&#128273; Aktivasi</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span>&#128241;</span><h2>Status WhatsApp</h2></div>
+    <div class="card-body">
+      <div id="poolSection" class="pool-info" style="display:none">
+        <div class="icon">&#9729;&#65039;</div>
+        <p id="poolMsg">Nomor Pool</p>
+        <small id="poolNomor">-</small>
+      </div>
+      <div id="qrSection" class="qr-wrap" style="display:none">
+        <img id="qrImage" src="" alt="QR Code">
+        <p>Buka WA &#8594; Perangkat Tertaut &#8594; Scan QR</p>
+      </div>
+      <div id="connectedSection" class="connected-info" style="display:none">
+        <div class="icon">&#9989;</div>
+        <p id="connectedMsg">Terhubung</p>
+        <small>Siap untuk blast</small>
+      </div>
+      <div id="loadingSection" class="connected-info">
+        <div class="icon">&#9203;</div>
+        <p style="color:#aaa">Menghubungkan...</p>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span>&#128640;</span><h2>Kirim Blast</h2></div>
+    <div class="card-body">
+      <div class="form-group">
+        <label>NOMOR TUJUAN (satu per baris, awali 62)</label>
+        <div class="upload-area" onclick="document.getElementById('fileUpload').click()">
+          <p>&#128193; Upload .txt / .csv &#8212; atau ketik manual di bawah</p>
+          <input type="file" id="fileUpload" accept=".txt,.csv" onchange="uploadFile(this)">
+        </div>
+        <textarea id="inputNomor" rows="4" placeholder="6281234567890&#10;6289876543210" oninput="hitungNomor()"></textarea>
+        <div class="nomor-count" id="nomorCount">0 nomor</div>
+      </div>
+      <div class="form-group">
+        <label>PESAN &#8212; Spintax: {Halo|Hai|Hey} kak!</label>
+        <textarea id="inputPesan" rows="5">{Halo|Hai|Selamat pagi} kak! &#128075;
+
+{Perkenalkan|Mau info} layanan kami untuk kebutuhan kamu.
+&#128172; {Fast response|Respon cepat}, sat set, no ribet.
+&#128233; Balas pesan ini untuk info lebih lanjut!</textarea>
+      </div>
+      <button class="btn btn-blast" id="btnBlast" onclick="mulaiBlast()" disabled>&#128640; Mulai Blast</button>
+      <button class="btn btn-stop" id="btnStop" onclick="stopBlast()" style="display:none">&#9209; Stop Blast</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span>&#128202;</span><h2>Progress Blast</h2><span id="blastBadge" class="badge" style="display:none">LIVE</span></div>
+    <div class="card-body">
+      <div class="progress-stats">
+        <div class="stat-box total"><div class="num" id="statTotal">0</div><div class="lbl">Total</div></div>
+        <div class="stat-box sukses"><div class="num" id="statSukses">0</div><div class="lbl">Sukses</div></div>
+        <div class="stat-box gagal"><div class="num" id="statGagal">0</div><div class="lbl">Gagal</div></div>
+      </div>
+      <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar"></div></div>
+      <div class="log-list" id="logList"><div class="empty-state">Belum ada blast berjalan</div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span>&#128172;</span><h2>Inbox Balasan</h2><span id="inboxBadge" class="badge" style="display:none">0</span></div>
+    <div class="card-body">
+      <div class="inbox-list" id="inboxList"><div class="empty-state">Belum ada balasan masuk</div></div>
+    </div>
+  </div>
+  <div class="admin-toggle" id="adminToggleWrap" style="display:none">
+    <button class="btn-sm" style="background:#ffd700;color:#000;font-weight:700" onclick="toggleAdmin()">&#9881;&#65039; Admin Panel</button>
+  </div>
+  <div class="admin-panel" id="adminPanel">
+    <h3>&#9881;&#65039; Admin Panel &#8212; MESIN-WA</h3>
+    <div class="admin-tabs">
+      <div class="admin-tab active" onclick="switchAdminTab('pool')">&#128241; WA Pool</div>
+      <div class="admin-tab" onclick="switchAdminTab('users')">&#128101; Users</div>
+      <div class="admin-tab" onclick="switchAdminTab('keys')">&#128273; License Keys</div>
+    </div>
+    <!-- WA Pool -->
+    <div id="tabPool" class="admin-tab-content active">
+      <div class="admin-grid">
+        <div class="admin-section">
+          <h4>TAMBAH NOMOR WA KE POOL</h4>
+          <button class="btn-admin" onclick="addToPool()">&#10133; Tambah Slot & Generate QR</button>
+          <div id="poolAddResult" style="margin-top:10px;font-size:12px;display:none"></div>
+          <div class="pool-qr-box" id="poolQRBox">
+            <img id="poolQRImg" src="" alt="QR Pool">
+            <p>Scan QR ini dengan HP yang punya nomor WA baru</p>
+            <p style="margin-top:6px;color:#666;font-size:11px">Buka WA &#8594; Perangkat Tertaut &#8594; Scan QR</p>
+          </div>
+          <div style="margin-top:14px;padding:10px;background:#0f1117;border-radius:8px;border:1px solid #2a3448;">
+            <p style="font-size:11px;color:#666;margin-bottom:6px">&#128279; Format proxy yang didukung:</p>
+            <p style="font-size:10px;color:#444;font-family:monospace;">socks5://user:pass@ip:port</p>
+            <p style="font-size:10px;color:#444;font-family:monospace;">socks4://ip:port</p>
+            <p style="font-size:10px;color:#444;font-family:monospace;">http://user:pass@ip:port</p>
+            <p style="font-size:10px;color:#444;font-family:monospace;">https://ip:port</p>
+          </div>
+        </div>
+        <div class="admin-section">
+          <h4>STOK NOMOR WA</h4>
+          <div id="poolTableWrap"><div class="empty-state">Loading...</div></div>
+        </div>
+      </div>
+    </div>
+    <!-- Users -->
+    <div id="tabUsers" class="admin-tab-content">
+      <div id="usersTableWrap"><div class="empty-state">Loading...</div></div>
+    </div>
+    <!-- Keys -->
+    <div id="tabKeys" class="admin-tab-content">
+      <div class="admin-grid">
+        <div class="admin-section">
+          <h4>GENERATE LICENSE KEY</h4>
+          <div class="admin-form">
+            <select id="aPlan"><option>Starter</option><option>Pro</option><option>Unlimited</option></select>
+            <input type="number" id="aQuota" placeholder="Quota harian (mis. 500)" min="1">
+            <input type="number" id="aDurasi" placeholder="Durasi hari (mis. 30)" min="1">
+            <button class="btn-admin" onclick="generateKey()">&#128273; Generate Key</button>
+          </div>
+          <div class="key-result" id="keyResult"></div>
+        </div>
+        <div class="admin-section">
+          <h4>SEMUA KEY</h4>
+          <div id="keysTableWrap"><div class="empty-state">Loading...</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Detail User -->
+<div class="modal-overlay" id="userModal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal()">&#10005;</button>
+    <h4>&#128100; Detail User</h4>
+    <div id="modalContent"></div>
+    <div class="modal-actions" id="modalActions"></div>
+  </div>
+</div>
+
+<script>
+const socket = io();
+let suksesBlast=0,gagalBlast=0,inboxCount=0,myData={};
+socket.on('connect',()=>socket.emit('join-me'));
+socket.emit('join-me');
+socket.on('force-logout',({msg})=>{ alert('\u26a0\ufe0f '+msg); window.location.href='/'; });
+
+async function init(){const res=await fetch('/api/me');const data=await res.json();if(!data.success){window.location.href='/';return;}myData=data;document.getElementById('uName').textContent=data.username;document.getElementById('uPlan').textContent=data.plan&&data.plan!=='-'?'\ud83d\udce6 '+data.plan:'\ud83d\udd12 No License';document.getElementById('quotaBadge').textContent='\u26a1 '+data.quotaTerpakai+' / '+data.quotaHarian;if(data.assignedNomor){const wb=document.getElementById('waBadge');wb.textContent='\ud83d\udcf1 '+data.assignedNomor;wb.style.display='inline-block';document.getElementById('btnReset').style.display='none';document.getElementById('poolSection').style.display='block';document.getElementById('loadingSection').style.display='none';document.getElementById('poolNomor').textContent=data.assignedNomor;}const banner=document.getElementById('licenseBanner');if(data.licenseActive){banner.classList.add('active');const exp=data.licenseExpiry?new Date(data.licenseExpiry).toLocaleDateString('id-ID'):'\u221e';document.getElementById('licenseMsg').textContent='\u2705 Lisensi aktif \u2014 '+data.plan+' | s/d '+exp+' | Sisa quota: '+data.sisaQuota;document.querySelector('.license-form').style.display='none';}if(data.role==='admin')document.getElementById('adminToggleWrap').style.display='block';const stRes=await fetch('/api/status');const stData=await stRes.json();updateWAStatus(stData.status,stData.status==='connected'?'\u2705 Terhubung: '+stData.nomor:'Menghubungkan...');if(data.assignedNomor)document.getElementById('poolMsg').textContent=stData.status==='connected'?'\u2705 Nomor Pool Aktif':'\u23f3 Menghubungkan...';if(data.licenseActive&&stData.status==='connected')document.getElementById('btnBlast').disabled=false;}
+socket.on('status',({status,msg})=>{updateWAStatus(status,msg);if(status==='connected')fetch('/api/me').then(r=>r.json()).then(d=>{if(d.licenseActive)document.getElementById('btnBlast').disabled=false;});else document.getElementById('btnBlast').disabled=true;if(myData.assignedWA)document.getElementById('poolMsg').textContent=status==='connected'?'\u2705 Nomor Pool Aktif':'\u23f3 Menghubungkan...';});
+socket.on('qr',(qrImage)=>{if(qrImage){document.getElementById('qrImage').src=qrImage;document.getElementById('qrSection').style.display='block';document.getElementById('loadingSection').style.display='none';}});
+socket.on('pool-qr',({poolId,qr})=>{const box=document.getElementById('poolQRBox');if(qr){document.getElementById('poolQRImg').src=qr;box.style.display='block';}else{box.style.display='none';}loadPool();});
+socket.on('pool-status',({poolId,status,nomor})=>{loadPool();if(status==='connected'){loadUsers();document.getElementById('poolQRBox').style.display='none';}});
+socket.on('blast-start',({total})=>{suksesBlast=0;gagalBlast=0;document.getElementById('statTotal').textContent=total;document.getElementById('statSukses').textContent=0;document.getElementById('statGagal').textContent=0;document.getElementById('progressBar').style.width='0%';document.getElementById('logList').innerHTML='';document.getElementById('blastBadge').style.display='inline-block';document.getElementById('btnBlast').style.display='none';document.getElementById('btnStop').style.display='block';});
+socket.on('blast-progress',({no,status,index,total})=>{if(status==='sukses')suksesBlast++;else gagalBlast++;document.getElementById('statSukses').textContent=suksesBlast;document.getElementById('statGagal').textContent=gagalBlast;document.getElementById('progressBar').style.width=Math.round((index/total)*100)+'%';const item=document.createElement('div');item.className='log-item';item.innerHTML='<div class="log-dot '+status+'"></div><div class="log-no">'+no+'</div><div class="log-status '+status+'">'+(status==='sukses'?'\u2705 Terkirim':'\u274c Gagal')+'</div><div style="color:#444;font-size:11px">['+index+'/'+total+']</div>';document.getElementById('logList').prepend(item);fetch('/api/me').then(r=>r.json()).then(d=>{if(d.success)document.getElementById('quotaBadge').textContent='\u26a1 '+d.quotaTerpakai+' / '+d.quotaHarian;});});
+socket.on('blast-done',({total,sukses,gagal})=>{document.getElementById('blastBadge').style.display='none';document.getElementById('btnBlast').style.display='block';document.getElementById('btnStop').style.display='none';document.getElementById('btnBlast').disabled=false;init();alert('\ud83c\udf89 Blast selesai!\n\u2705 Sukses: '+sukses+'\n\u274c Gagal: '+gagal+'\n\ud83d\udcca Total: '+total);});
+socket.on('blast-stopped',()=>{document.getElementById('blastBadge').style.display='none';document.getElementById('btnBlast').style.display='block';document.getElementById('btnStop').style.display='none';document.getElementById('btnBlast').disabled=false;});
+socket.on('inbox',(item)=>{addInboxItem(item);inboxCount++;const b=document.getElementById('inboxBadge');b.style.display='inline-block';b.textContent=inboxCount;});
+socket.on('inbox-all',(items)=>{if(!items.length)return;document.getElementById('inboxList').innerHTML='';items.forEach(addInboxItem);inboxCount=items.length;const b=document.getElementById('inboxBadge');b.style.display='inline-block';b.textContent=inboxCount;});
+
+function updateWAStatus(status,msg){const badge=document.getElementById('statusBadge');badge.className='status-badge '+status;if(status==='connected'){badge.textContent='\ud83d\udfe2 '+msg;document.getElementById('loadingSection').style.display='none';document.getElementById('qrSection').style.display='none';if(!myData.assignedWA){document.getElementById('connectedSection').style.display='block';document.getElementById('connectedMsg').textContent=msg;}}else if(status==='qr'){badge.textContent='\ud83d\udfe1 Scan QR';document.getElementById('loadingSection').style.display='none';document.getElementById('connectedSection').style.display='none';document.getElementById('qrSection').style.display='block';}else{badge.textContent='\ud83d\udd34 '+(msg||'Terputus');if(!myData.assignedWA){document.getElementById('loadingSection').style.display='block';document.getElementById('qrSection').style.display='none';document.getElementById('connectedSection').style.display='none';}}}
+function addInboxItem(item){const list=document.getElementById('inboxList');const empty=list.querySelector('.empty-state');if(empty)empty.remove();const el=document.createElement('div');el.className='inbox-item';el.innerHTML='<div class="inbox-from">\ud83d\udcf1 '+item.from+'</div><div class="inbox-text">'+item.text+'</div><div class="inbox-time">'+item.time+'</div>';list.prepend(el);}
+function hitungNomor(){const lines=document.getElementById('inputNomor').value.split('\n').map(n=>n.trim()).filter(n=>/^62\d{8,13}$/.test(n));document.getElementById('nomorCount').textContent=lines.length+' nomor valid';}
+async function mulaiBlast(){const nomor=document.getElementById('inputNomor').value.trim();const pesan=document.getElementById('inputPesan').value.trim();if(!nomor)return alert('Isi nomor tujuan!');if(!pesan)return alert('Isi pesan!');const res=await fetch('/api/blast',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nomor,pesan})});const data=await res.json();if(!data.success)alert('\u274c '+data.error);else if(data.catatan)alert('\u26a0\ufe0f '+data.catatan);}
+async function stopBlast(){await fetch('/api/blast/stop',{method:'POST'});}
+async function resetSesi(){if(!confirm('Reset sesi WA?'))return;const res=await fetch('/api/reset-sesi',{method:'POST'});const data=await res.json();alert(data.msg||data.error);}
+async function doLogout(){await fetch('/api/logout',{method:'POST'});window.location.href='/';}
+async function aktivasiKey(){const key=document.getElementById('inputKey').value.trim();if(!key)return alert('Masukkan key!');const res=await fetch('/api/aktivasi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key})});const data=await res.json();if(data.success){alert(data.msg);location.reload();}else alert('\u274c '+data.error);}
+async function uploadFile(input){const file=input.files[0];if(!file)return;const fd=new FormData();fd.append('file',file);const res=await fetch('/api/upload-nomor',{method:'POST',body:fd});const data=await res.json();if(data.success){document.getElementById('inputNomor').value=data.nomor.join('\n');document.getElementById('nomorCount').textContent=data.total+' nomor valid dari file';}else alert('\u274c '+data.error);input.value='';}
+function toggleAdmin(){const p=document.getElementById('adminPanel');p.style.display=p.style.display==='none'?'block':'none';if(p.style.display==='block'){loadPool();loadUsers();}}
+function switchAdminTab(tab){document.querySelectorAll('.admin-tab').forEach((el,i)=>el.classList.toggle('active',['pool','users','keys'][i]===tab));document.querySelectorAll('.admin-tab-content').forEach(el=>el.classList.remove('active'));document.getElementById('tab'+tab.charAt(0).toUpperCase()+tab.slice(1)).classList.add('active');if(tab==='pool')loadPool();if(tab==='users')loadUsers();if(tab==='keys')loadKeys();}
+
+// WA Pool dengan proxy
+async function addToPool(){const res=await fetch('/api/admin/wa-pool/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});const data=await res.json();const el=document.getElementById('poolAddResult');el.style.display='block';el.style.color=data.success?'#25d366':'#ff6b6b';el.textContent=data.msg||data.error;if(data.success)loadPool();}
+
 async function loadPool(){
     const res=await fetch('/api/admin/wa-pool');
     const pool=await res.json();
     const wrap=document.getElementById('poolTableWrap');
     if(!pool.length){wrap.innerHTML='<div class="empty-state">Belum ada nomor di pool</div>';return;}
     wrap.innerHTML='<table class="pool-table"><thead><tr><th>Nomor</th><th>Status</th><th>Proxy</th><th>Assigned</th><th>Aksi</th></tr></thead><tbody>'+
-    pool.map(p=>`<tr>
-        <td>${p.nomor||'(scanning...)'}</td>
-        <td><span class="pill ${p.status}">${p.status}</span></td>
-        <td>
-            <div style="display:flex;gap:4px;align-items:center;">
-                <input type="text" id="proxy_${p.id}" value="${p.proxy||''}" placeholder="socks5://user:pass@ip:port" style="background:#0f1117;border:1px solid #2a3448;color:#e0e0e0;padding:3px 6px;border-radius:4px;font-size:10px;width:180px;">
-                <button class="btn-success-sm" onclick="setProxy('${p.id}')" style="white-space:nowrap;font-size:10px;padding:3px 8px;">Set</button>
-                ${p.proxy?'<span style="color:#25d366;font-size:10px">&#9989;</span>':'<span style="color:#444;font-size:10px">-</span>'}
-            </div>
-        </td>
-        <td>${p.assignedTo||'-'}</td>
-        <td><button class="btn-danger" onclick="deletePool('${p.id}')">&#128465;</button></td>
-    </tr>`).join('')+
-    '</tbody></table>';
+    pool.map(p=>'<tr>'+
+        '<td>'+(p.nomor||'(scanning..)')+'</td>'+
+        '<td><span class="pill '+p.status+'">'+p.status+'</span></td>'+
+        '<td><div style="display:flex;gap:4px;align-items:center;">'+
+            '<input type="text" id="proxy_'+p.id+'" value="'+(p.proxy||'')+'" placeholder="socks5://user:pass@ip:port" style="background:#0f1117;border:1px solid #2a3448;color:#e0e0e0;padding:3px 6px;border-radius:4px;font-size:10px;width:170px;">'+
+            '<button class="btn-success-sm" onclick="setProxy(\''+p.id+'\')" style="font-size:10px;padding:3px 8px;">Set</button>'+
+            (p.proxy?'<span style="color:#25d366;font-size:11px">\u2705</span>':'<span style="color:#444;font-size:10px">-</span>')+
+        '</div></td>'+
+        '<td>'+(p.assignedTo||'-')+'</td>'+
+        '<td><button class="btn-danger" onclick="deletePool(\''+p.id+'\')">\ud83d\uddd1</button></td>'+
+    '</tr>').join('')+'</tbody></table>';
 }
 
 async function setProxy(poolId){
@@ -25,5 +349,64 @@ async function setProxy(poolId){
     const proxyUrl=input.value.trim();
     const res=await fetch('/api/admin/wa-pool/'+poolId+'/proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({proxyUrl})});
     const data=await res.json();
-    if(data.success){alert(data.msg);loadPool();}else alert('&#10060; '+data.error);
+    if(data.success){alert(data.msg);loadPool();}else alert('\u274c '+data.error);
 }
+
+async function deletePool(id){if(!confirm('Hapus nomor dari pool?'))return;await fetch('/api/admin/wa-pool/'+id,{method:'DELETE'});document.getElementById('poolQRBox').style.display='none';loadPool();loadUsers();}
+
+// Users
+async function loadUsers(){
+    const res=await fetch('/api/admin/users');
+    const users=await res.json();
+    const pool=(await(await fetch('/api/admin/wa-pool')).json());
+    const wrap=document.getElementById('usersTableWrap');
+    if(!users.length){wrap.innerHTML='<div class="empty-state">Belum ada user</div>';return;}
+    wrap.innerHTML='<table class="users-table"><thead><tr><th>Username</th><th>Plan</th><th>Quota</th><th>Exp</th><th>Status</th><th>Nomor WA</th><th>Aksi</th></tr></thead><tbody>'+
+    users.map(u=>{
+        const exp=u.licenseExpiry?new Date(u.licenseExpiry).toLocaleDateString('id-ID'):'-';
+        const statusPill=u.banned?'<span class="pill banned">Banned</span>':(u.licenseActive?'<span class="pill active">Aktif</span>':'<span class="pill disconnected">Non-aktif</span>');
+        const waSelect='<select onchange="assignWA(\''+u.id+'\',this.value)" style="background:#0f1117;border:1px solid #2a3448;color:#e0e0e0;padding:3px 6px;border-radius:4px;font-size:11px"><option value="">-- Pilih --</option>'+pool.filter(p=>p.status==='connected').map(p=>'<option value="'+p.id+'"'+(u.assignedWA===p.id?' selected':'')+'>'+p.nomor+'</option>').join('')+'</select>'+(u.assignedWA?'<button class="btn-danger" style="margin-left:4px" onclick="unassignWA(\''+u.id+'\')">&#10005;</button>':'');
+        return '<tr><td>'+u.username+'</td><td>'+(u.plan||'-')+'</td><td>'+u.quotaTerpakai+'/'+u.quotaHarian+'</td><td style="font-size:11px">'+exp+'</td><td>'+statusPill+'</td><td>'+waSelect+'</td><td><button class="btn-info" onclick="showUserDetail(\''+u.id+'\')">\ud83d\udd0d</button></td></tr>';
+    }).join('')+'</tbody></table>';
+}
+
+async function showUserDetail(userId){
+    const res=await fetch('/api/admin/users/'+userId);
+    const data=await res.json();
+    if(!data.success) return alert('Error: '+data.error);
+    const u=data.user;
+    const exp=u.licenseExpiry?new Date(u.licenseExpiry).toLocaleDateString('id-ID'):'-';
+    document.getElementById('modalContent').innerHTML=
+        '<div class="detail-row"><span class="label">Username</span><span class="val">'+u.username+'</span></div>'+
+        '<div class="detail-row"><span class="label">Role</span><span class="val">'+u.role+'</span></div>'+
+        '<div class="detail-row"><span class="label">Plan</span><span class="val">'+(u.plan||'-')+'</span></div>'+
+        '<div class="detail-row"><span class="label">Status</span><span class="val">'+(u.banned?'\ud83d\udeab Banned':u.licenseActive?'\u2705 Aktif':'\u274c Non-aktif')+'</span></div>'+
+        '<div class="detail-row"><span class="label">Lisensi s/d</span><span class="val">'+exp+'</span></div>'+
+        '<div class="detail-row"><span class="label">Quota</span><span class="val">'+u.quotaTerpakai+' / '+u.quotaHarian+' per hari</span></div>'+
+        '<div class="detail-row"><span class="label">Nomor WA</span><span class="val">'+(u.assignedNomor||'-')+'</span></div>'+
+        '<div class="detail-row"><span class="label">Daftar</span><span class="val">'+new Date(u.createdAt).toLocaleDateString('id-ID')+'</span></div>';
+    document.getElementById('modalActions').innerHTML=
+        '<div><p style="font-size:11px;color:#aaa;margin-bottom:6px">\ud83d\udd11 Reset Password</p><div class="action-group"><input type="password" id="newPassInput" placeholder="Password baru (min 6 karakter)"><button class="btn-success-sm" onclick="doResetPass(\''+u.id+'\')">Reset</button></div></div>'+
+        '<div><p style="font-size:11px;color:#aaa;margin-bottom:6px">\ud83d\udcc5 Extend Lisensi</p><div class="action-group"><input type="number" id="extendDays" placeholder="Tambah berapa hari?" min="1"><button class="btn-success-sm" onclick="doExtend(\''+u.id+'\')">Extend</button></div></div>'+
+        '<div class="action-group">'+(u.banned?
+            '<button class="btn-success-sm" onclick="doBan(\''+u.id+'\',true)" style="width:100%">\u2705 Unban User</button>':
+            '<button class="btn-warn" onclick="doBan(\''+u.id+'\',false)" style="width:100%">\ud83d\udeab Ban User</button>')+
+        '</div>'+
+        '<div class="action-group"><button class="btn-danger" onclick="doDelete(\''+u.id+'\',\''+u.username+'\')" style="width:100%">\ud83d\uddd1 Hapus User</button></div>';
+    document.getElementById('userModal').classList.add('show');
+}
+
+function closeModal(){ document.getElementById('userModal').classList.remove('show'); }
+async function doResetPass(userId){const pw=document.getElementById('newPassInput').value;if(!pw||pw.length<6)return alert('Password min. 6 karakter!');const res=await fetch('/api/admin/users/'+userId+'/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({newPassword:pw})});const data=await res.json();if(data.success){alert(data.msg);document.getElementById('newPassInput').value='';}else alert('\u274c '+data.error);}
+async function doExtend(userId){const days=document.getElementById('extendDays').value;if(!days||days<1)return alert('Masukkan jumlah hari!');const res=await fetch('/api/admin/users/'+userId+'/extend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({days})});const data=await res.json();if(data.success){alert(data.msg);closeModal();loadUsers();}else alert('\u274c '+data.error);}
+async function doBan(userId,isCurrentlyBanned){if(!confirm((isCurrentlyBanned?'Unban':'Ban')+' user ini?'))return;const res=await fetch('/api/admin/users/'+userId+'/ban',{method:'POST'});const data=await res.json();if(data.success){alert(data.msg);closeModal();loadUsers();}else alert('\u274c '+data.error);}
+async function doDelete(userId,username){if(!confirm('Hapus user "'+username+'"? Tidak bisa dibatalkan!'))return;const res=await fetch('/api/admin/users/'+userId,{method:'DELETE'});const data=await res.json();if(data.success){alert(data.msg);closeModal();loadUsers();}else alert('\u274c '+data.error);}
+async function assignWA(userId,poolId){if(!poolId)return;const res=await fetch('/api/admin/wa-pool/assign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({poolId,userId})});const data=await res.json();if(data.success){alert(data.msg);loadUsers();}else alert('\u274c '+data.error);}
+async function unassignWA(userId){await fetch('/api/admin/wa-pool/unassign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId})});loadUsers();}
+async function generateKey(){const plan=document.getElementById('aPlan').value;const quota=document.getElementById('aQuota').value;const durasi=document.getElementById('aDurasi').value;if(!quota||!durasi)return alert('Isi quota dan durasi!');const res=await fetch('/api/admin/generate-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan,quotaHarian:quota,durasiHari:durasi})});const data=await res.json();if(data.success){const el=document.getElementById('keyResult');el.textContent='\ud83d\udd11 '+data.key;el.style.display='block';loadKeys();}else alert('\u274c '+data.error);}
+async function loadKeys(){const res=await fetch('/api/admin/licenses');const keys=await res.json();const wrap=document.getElementById('keysTableWrap');if(!keys.length){wrap.innerHTML='<div class="empty-state">Belum ada key</div>';return;}wrap.innerHTML='<table class="pool-table"><thead><tr><th>Key</th><th>Plan</th><th>Quota</th><th>Status</th></tr></thead><tbody>'+keys.map(k=>'<tr><td style="font-size:11px;word-break:break-all">'+k.key+'</td><td>'+k.plan+'</td><td>'+k.quotaHarian+'/hr</td><td>'+(k.usedBy?'<span style="color:#ff6b6b">Terpakai</span>':'<span style="color:#25d366">Tersedia</span>')+'</td></tr>').join('')+'</tbody></table>';}
+
+init();
+</script>
+</body>
+</html>
