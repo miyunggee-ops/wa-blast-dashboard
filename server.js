@@ -1,4 +1,4 @@
-// WA Blast Dashboard v3 - Spintax + Rotasi Nomor
+// WA Blast Dashboard v3 - MESIN-WA - Bug fixes
 const {
     default: makeWASocket,
     useMultiFileAuthState,
@@ -33,11 +33,10 @@ if (!fs.existsSync('uploads')) fs.mkdirSync('uploads', { recursive: true });
 function readJSON(file)        { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return []; } }
 function writeJSON(file, data) { fs.writeFileSync(file, JSON.stringify(data, null, 2)); }
 
-// ─── Spintax parser ────────────────────────────────────────────────────────────────
+// ─── Spintax parser ───────────────────────────────────────────────────────────
 function parseSpintax(text) {
-    // Format: {opsi1|opsi2|opsi3} → pilih satu secara random
     let result = text;
-    let limit  = 50; // max iterasi biar tidak infinite loop
+    let limit  = 50;
     while (result.includes('{') && limit-- > 0) {
         result = result.replace(/\{([^{}]+)\}/g, (match, content) => {
             const options = content.split('|');
@@ -104,18 +103,17 @@ function cekResetQuota(user) {
     return user;
 }
 
-// ─── Rotasi nomor: ambil sock berikutnya dari pool ─────────────────────────────────
+// ─── Rotasi nomor ─────────────────────────────────────────────────────────────
 function getRotasiSock(userId) {
-    // Ambil semua pool yang connected
-    const pool = readJSON('data/wa-pool.json');
+    const pool  = readJSON('data/wa-pool.json');
     const aktif = pool.filter(p => p.status === 'connected');
     if (!aktif.length) return null;
     const ses = getUserSession(userId);
-    // Round-robin index
-    const idx  = ses.rotasiIdx % aktif.length;
+    const idx = ses.rotasiIdx % aktif.length;
     ses.rotasiIdx++;
     const ps = getPoolSession(aktif[idx].id);
-    return ps.status === 'connected' ? ps.sock : null;
+    // Fix Bug#2: validasi sock masih hidup
+    return (ps.status === 'connected' && ps.sock) ? ps.sock : null;
 }
 
 function notifyPoolUsers(poolId, status, nomor) {
@@ -181,7 +179,7 @@ async function connectPoolQR(poolId) {
             const from = msg.key.remoteJid?.replace('@s.whatsapp.net', '') || '';
             const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || msg.message?.imageMessage?.caption || '[Media]';
             const item = { from, text, time: new Date().toLocaleTimeString('id-ID') };
-            const users = readJSON('data/users.json');
+            const users   = readJSON('data/users.json');
             const seenIds = new Set();
             users.filter(u => u.assignedWA === poolId).forEach(u => {
                 seenIds.add(u.id);
@@ -189,6 +187,7 @@ async function connectPoolQR(poolId) {
                 ses.inbox.unshift(item); if (ses.inbox.length > 100) ses.inbox.pop();
                 io.to(`user:${u.id}`).emit('inbox', item);
             });
+            // Fix Bug#3: forward ke admin
             users.filter(u => u.role === 'admin' && !seenIds.has(u.id)).forEach(u => {
                 const ses = getUserSession(u.id);
                 ses.inbox.unshift(item); if (ses.inbox.length > 100) ses.inbox.pop();
@@ -265,8 +264,8 @@ app.get('/api/me', requireLogin, (req, res) => {
     const user  = users.find(u => u.id === req.session.userId);
     if (!user) return res.json({ success: false });
     cekResetQuota(user); writeJSON('data/users.json', users);
-    const pool   = readJSON('data/wa-pool.json');
-    const waPool = user.assignedWA ? pool.find(p => p.id === user.assignedWA) : null;
+    const pool      = readJSON('data/wa-pool.json');
+    const waPool    = user.assignedWA ? pool.find(p => p.id === user.assignedWA) : null;
     const poolAktif = pool.filter(p => p.status === 'connected').length;
     res.json({ success: true, userId: user.id, username: user.username, role: user.role, licenseActive: user.licenseActive, licenseExpiry: user.licenseExpiry, plan: user.plan||'-', quotaHarian: user.quotaHarian, quotaTerpakai: user.quotaTerpakai, sisaQuota: Math.max(0, user.quotaHarian - user.quotaTerpakai), assignedWA: user.assignedWA, assignedNomor: waPool?.nomor||null, poolAktif });
 });
@@ -365,16 +364,15 @@ app.post('/api/admin/generate-key', requireAdmin, (req, res) => {
 app.get('/api/admin/licenses', requireAdmin, (req, res) => res.json(readJSON('data/licenses.json')));
 
 app.get('/api/status', requireLogin, (req, res) => {
-    const users = readJSON('data/users.json');
-    const user  = users.find(u => u.id === req.session.userId);
-    const pool  = readJSON('data/wa-pool.json');
+    const users     = readJSON('data/users.json');
+    const user      = users.find(u => u.id === req.session.userId);
+    const pool      = readJSON('data/wa-pool.json');
     const poolAktif = pool.filter(p => p.status === 'connected');
     if (user?.assignedWA) {
         const ps = getPoolSession(user.assignedWA);
         const p  = pool.find(p => p.id === user.assignedWA);
         return res.json({ status: ps.status, nomor: p?.nomor||'-', mode: 'pool', poolAktif: poolAktif.length });
     }
-    // Admin: cek apakah ada pool aktif untuk rotasi
     if (user?.role === 'admin' && poolAktif.length > 0) {
         return res.json({ status: 'connected', nomor: `${poolAktif.length} nomor pool`, mode: 'rotasi', poolAktif: poolAktif.length });
     }
@@ -392,24 +390,23 @@ app.post('/api/blast', requireLogin, async (req, res) => {
     if (!user.licenseActive) return res.json({ success: false, error: 'Aktifkan lisensi dulu!' });
     if (user.licenseExpiry && new Date() > new Date(user.licenseExpiry)) return res.json({ success: false, error: 'Lisensi expired!' });
 
-    // Tentukan mode blast
     let sockGetter;
     if (user.assignedWA) {
-        // User punya nomor tetap
         const ps = getPoolSession(user.assignedWA);
         if (ps.status !== 'connected') return res.json({ success: false, error: 'Nomor WA pool belum connected!' });
         sockGetter = () => ps.sock;
     } else if (user.role === 'admin') {
-        // Admin: gunakan rotasi otomatis dari semua pool
-        const sock = getRotasiSock(req.session.userId);
-        if (!sock) {
-            // Fallback ke personal
+        // Admin: rotasi dari pool, fallback ke personal
+        sockGetter = () => {
+            const sock = getRotasiSock(req.session.userId);
+            if (sock) return sock;
+            // fallback personal
             const ses = getUserSession(req.session.userId);
-            if (ses.status !== 'connected') return res.json({ success: false, error: 'WA belum terhubung! Scan QR atau tambah nomor ke pool.' });
-            sockGetter = () => ses.sock;
-        } else {
-            sockGetter = () => getRotasiSock(req.session.userId) || sock;
-        }
+            return ses.status === 'connected' ? ses.sock : null;
+        };
+        // Cek awal: ada yang bisa dipakai?
+        const testSock = sockGetter();
+        if (!testSock) return res.json({ success: false, error: 'WA belum terhubung! Scan QR atau tambah nomor ke pool.' });
     } else {
         const ses = getUserSession(req.session.userId);
         if (ses.status !== 'connected') return res.json({ success: false, error: 'WA belum terhubung!' });
@@ -461,18 +458,16 @@ app.post('/api/upload-nomor', requireLogin, upload.single('file'), (req, res) =>
     } catch(e) { res.json({ success: false, error: e.message }); }
 });
 
-// ─── Blast worker dengan spintax + rotasi ───────────────────────────────────────────
+// ─── Blast worker: spintax + rotasi ──────────────────────────────────────────
 async function jalankanBlast(userId, sockGetter, pesan, numbers) {
     const ses = getUserSession(userId);
     io.to(`user:${userId}`).emit('blast-start', { total: numbers.length });
     for (let i = 0; i < numbers.length; i++) {
         if (!ses.isBlasting) break;
-        // Spintax: generate pesan unik tiap nomor
         const pesanFinal = parseSpintax(pesan);
-        // Rotasi: ambil sock yang dipakai
         const sock = typeof sockGetter === 'function' ? sockGetter() : sockGetter;
         if (!sock) {
-            const log = { no: numbers[i], status: 'gagal', index: i+1, total: numbers.length, time: new Date().toLocaleTimeString('id-ID'), info: 'no sock' };
+            const log = { no: numbers[i], status: 'gagal', index: i+1, total: numbers.length, time: new Date().toLocaleTimeString('id-ID') };
             ses.blastLog.push(log);
             io.to(`user:${userId}`).emit('blast-progress', log);
             continue;
@@ -494,6 +489,7 @@ async function jalankanBlast(userId, sockGetter, pesan, numbers) {
     io.to(`user:${userId}`).emit('blast-done', { total: numbers.length, sukses: ses.blastLog.filter(l=>l.status==='sukses').length, gagal: ses.blastLog.filter(l=>l.status==='gagal').length });
 }
 
+// ─── Socket.IO ────────────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
     const userId = socket.request.session?.userId;
     if (!userId) return;
@@ -501,6 +497,7 @@ io.on('connection', (socket) => {
     const users = readJSON('data/users.json');
     const user  = users.find(u => u.id === userId);
     if (user?.role === 'admin') socket.join('admin');
+
     if (user?.assignedWA) {
         const ps   = getPoolSession(user.assignedWA);
         const pool = readJSON('data/wa-pool.json');
@@ -508,12 +505,14 @@ io.on('connection', (socket) => {
         socket.emit('status', { status: ps.status, msg: ps.status==='connected' ? `✅ Terhubung: ${p?.nomor||'-'}` : 'Menghubungkan...' });
         const ses = getUserSession(userId);
         if (ps.status === 'connected') { ses.sock=ps.sock; ses.status='connected'; ses.poolId=user.assignedWA; }
+        socket.emit('inbox-all', ses.inbox);
     } else {
         const pool  = readJSON('data/wa-pool.json');
         const aktif = pool.filter(p => p.status === 'connected');
         if (user?.role === 'admin' && aktif.length > 0) {
-            // Admin dengan pool aktif: langsung siap blast
             socket.emit('status', { status: 'connected', msg: `✅ ${aktif.length} nomor pool aktif (rotasi)` });
+            // Fix Bug#3: kirim inbox admin
+            socket.emit('inbox-all', getUserSession(userId).inbox);
         } else {
             const ses = getUserSession(userId);
             socket.emit('status', { status: ses.status, msg: ses.status==='connected' ? `✅ Terhubung: ${ses.sock?.user?.id?.split(':')[0]||'-'}` : ses.status==='qr' ? 'Scan QR' : 'Menghubungkan...' });
@@ -525,7 +524,7 @@ io.on('connection', (socket) => {
 });
 
 server.listen(PORT, () => {
-    console.log(`\n🚀 WA Blast Dashboard v3 jalan di port ${PORT}`);
+    console.log(`\n🚀 MESIN-WA jalan di port ${PORT}`);
     console.log(`📌 Login: ${ADMIN_USERNAME} / ${ADMIN_PASSWORD}`);
     setTimeout(autoReconnectPool, 3000);
 });
