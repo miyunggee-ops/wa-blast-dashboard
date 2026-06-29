@@ -5,35 +5,39 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MESIN-WA — Login</title>
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; display: flex; align-items: center; justify-content: center; user-select: none; -webkit-user-select: none; }
-.wrap { width: 100%; max-width: 400px; padding: 24px; }
-.logo { text-align: center; margin-bottom: 32px; }
-.logo h1 { font-size: 28px; color: #fff; font-weight: 800; letter-spacing: -1px; }
-.logo h1 span { color: #25d366; }
-.logo p { color: #666; font-size: 13px; margin-top: 6px; }
-.card { background: #1a1f2e; border-radius: 16px; border: 1px solid #2a3448; padding: 28px; }
-.tabs { display: flex; margin-bottom: 24px; border-bottom: 1px solid #2a3448; }
-.tab { flex: 1; text-align: center; padding: 10px; font-size: 13px; font-weight: 600; cursor: pointer; color: #666; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all 0.2s; }
-.tab.active { color: #25d366; border-bottom-color: #25d366; }
-.form-group { margin-bottom: 16px; }
-.form-group label { display: block; font-size: 12px; color: #aaa; margin-bottom: 6px; font-weight: 500; }
-.form-group input { width: 100%; background: #0f1117; border: 1px solid #2a3448; border-radius: 8px; color: #e0e0e0; padding: 10px 12px; font-size: 14px; user-select: text; -webkit-user-select: text; }
-.form-group input:focus { outline: none; border-color: #25d366; }
-.btn { width: 100%; padding: 12px; border-radius: 8px; border: none; font-size: 14px; font-weight: 700; cursor: pointer; background: #25d366; color: #000; }
-.btn:hover { background: #20bb5a; }
-.msg { margin-top: 14px; text-align: center; font-size: 13px; padding: 10px; border-radius: 8px; display: none; }
-.msg.success { background: #1a4731; color: #25d366; }
-.msg.error { background: #3d1a1a; color: #ff6b6b; }
-.panel { display: none; }
-.panel.active { display: block; }
-.note { text-align: center; margin-top: 18px; font-size: 12px; color: #444; }
+:root{--bg:#000;--bg2:#0a0a0a;--card:#111;--border:#39ff14;--text:#fff;--text2:#aaa;--green:#39ff14;--green2:#2bc910;--red:#ff4757;}
+[data-theme=light]{--bg:#f0f0f0;--bg2:#e0e0e0;--card:#fff;--border:#39ff14;--text:#000;--text2:#555;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;transition:background .3s;}
+.wrap{width:100%;max-width:420px;padding:24px;}
+.logo{text-align:center;margin-bottom:28px;}
+.logo h1{font-size:32px;color:var(--green);font-weight:900;letter-spacing:2px;text-shadow:0 0 20px var(--green);}
+.logo p{color:var(--text2);font-size:13px;margin-top:6px;}
+.theme-toggle{position:fixed;top:16px;right:16px;background:var(--card);border:1px solid var(--border);border-radius:20px;padding:6px 14px;font-size:12px;color:var(--text);cursor:pointer;}
+.card{background:var(--card);border-radius:16px;border:1px solid var(--border);padding:28px;box-shadow:0 0 20px rgba(57,255,20,.1);}
+.tabs{display:flex;margin-bottom:24px;border-bottom:1px solid #222;}
+.tab{flex:1;text-align:center;padding:10px;font-size:13px;font-weight:600;cursor:pointer;color:var(--text2);border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .2s;}
+.tab.active{color:var(--green);border-bottom-color:var(--green);}
+.form-group{margin-bottom:16px;}
+.form-group label{display:block;font-size:11px;color:var(--green);margin-bottom:6px;font-weight:700;letter-spacing:1px;}
+.form-group input{width:100%;background:#000;border:1px solid #333;border-radius:8px;color:#fff;padding:10px 12px;font-size:14px;transition:border .2s;}
+.form-group input:focus{outline:none;border-color:var(--green);box-shadow:0 0 8px rgba(57,255,20,.3);}
+.btn{width:100%;padding:12px;border-radius:8px;border:none;font-size:14px;font-weight:700;cursor:pointer;background:var(--green);color:#000;transition:all .2s;letter-spacing:1px;}
+.btn:hover{background:var(--green2);box-shadow:0 0 16px rgba(57,255,20,.5);}
+.msg{margin-top:14px;text-align:center;font-size:13px;padding:10px;border-radius:8px;display:none;}
+.msg.success{background:#0a1f0a;color:var(--green);border:1px solid var(--green);}
+.msg.error{background:#1f0a0a;color:var(--red);border:1px solid var(--red);}
+.panel{display:none;}
+.panel.active{display:block;}
+.note{text-align:center;margin-top:18px;font-size:12px;color:#333;}
+.note a{color:var(--green);text-decoration:none;}
 </style>
 </head>
 <body>
+<button class="theme-toggle" onclick="toggleTheme()">&#9728; Mode</button>
 <div class="wrap">
   <div class="logo">
-    <h1>&#9881; <span>MESIN-WA</span></h1>
+    <h1>&#9881; MESIN-WA</h1>
     <p>Platform WhatsApp Blast Profesional</p>
   </div>
   <div class="card">
@@ -44,37 +48,21 @@ body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0;
     <div id="panelLogin" class="panel active">
       <div class="form-group"><label>USERNAME</label><input type="text" id="loginUser" placeholder="username" autocomplete="username"></div>
       <div class="form-group"><label>PASSWORD</label><input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password"></div>
-      <button class="btn" onclick="doLogin()">Masuk ke MESIN-WA</button>
+      <button class="btn" onclick="doLogin()">&#9889; MASUK</button>
       <div id="msgLogin" class="msg"></div>
     </div>
     <div id="panelRegister" class="panel">
       <div class="form-group"><label>USERNAME</label><input type="text" id="regUser" placeholder="username baru"></div>
       <div class="form-group"><label>PASSWORD</label><input type="password" id="regPass" placeholder="min. 6 karakter"></div>
-      <button class="btn" onclick="doRegister()">Buat Akun</button>
+      <button class="btn" onclick="doRegister()">&#128394; BUAT AKUN</button>
       <div id="msgRegister" class="msg"></div>
     </div>
-    <div class="note">Setelah login, aktifkan lisensi untuk mulai blast</div>
+    <div class="note">Belum punya akun? <a href="/member">Beli Member</a></div>
   </div>
 </div>
 <script>
-// ─── PROTEKSI SOURCE CODE ─────────────────────────────────────────────────────
-document.addEventListener('contextmenu', e => e.preventDefault());
-document.addEventListener('keydown', e => {
-    if (e.key === 'F12') { e.preventDefault(); return false; }
-    if (e.ctrlKey && e.shiftKey && ['I','J','C','U'].includes(e.key.toUpperCase())) { e.preventDefault(); return false; }
-    if (e.ctrlKey && e.key.toUpperCase() === 'U') { e.preventDefault(); return false; }
-    if (e.ctrlKey && e.key.toUpperCase() === 'S') { e.preventDefault(); return false; }
-});
-(function devtools(){
-    const threshold = 160;
-    setInterval(()=>{
-        if(window.outerWidth - window.innerWidth > threshold || window.outerHeight - window.innerHeight > threshold){
-            document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0f1117;color:#ff4757;font-family:sans-serif;font-size:18px;font-weight:700;">&#9888; Akses ditolak</div>';
-        }
-    }, 1000);
-})();
-// ─────────────────────────────────────────────────────────────────────────────
-
+function toggleTheme(){const h=document.documentElement;h.setAttribute('data-theme',h.getAttribute('data-theme')==='light'?'':'light');localStorage.setItem('theme',h.getAttribute('data-theme'));}
+if(localStorage.getItem('theme')==='light')document.documentElement.setAttribute('data-theme','light');
 function switchTab(t){document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',(i===0&&t==='login')||(i===1&&t==='register')));document.getElementById('panelLogin').classList.toggle('active',t==='login');document.getElementById('panelRegister').classList.toggle('active',t==='register');}
 async function doLogin(){const u=document.getElementById('loginUser').value.trim();const p=document.getElementById('loginPass').value;const msg=document.getElementById('msgLogin');msg.style.display='none';if(!u||!p){showMsg(msg,'error','Isi username & password!');return;}const res=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});const data=await res.json();if(data.success){window.location.href='/dashboard';}else showMsg(msg,'error',data.error);}
 async function doRegister(){const u=document.getElementById('regUser').value.trim();const p=document.getElementById('regPass').value;const msg=document.getElementById('msgRegister');msg.style.display='none';if(!u||!p){showMsg(msg,'error','Isi semua field!');return;}if(p.length<6){showMsg(msg,'error','Password min. 6 karakter!');return;}const res=await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});const data=await res.json();if(data.success){showMsg(msg,'success',data.msg);setTimeout(()=>switchTab('login'),2000);}else showMsg(msg,'error',data.error);}

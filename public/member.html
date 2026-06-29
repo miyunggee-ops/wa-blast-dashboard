@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MESIN-WA — Beli Member</title>
+<style>
+:root{--bg:#000;--card:#0d0d0d;--border:#39ff14;--green:#39ff14;--green2:#2bc910;--text:#fff;--text2:#aaa;--red:#ff4757;}
+[data-theme=light]{--bg:#f0f0f0;--card:#fff;--text:#000;--text2:#555;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+.theme-toggle{position:fixed;top:16px;right:16px;background:var(--card);border:1px solid var(--border);border-radius:20px;padding:6px 14px;font-size:12px;color:var(--text);cursor:pointer;z-index:99;}
+nav{background:#000;border-bottom:1px solid var(--green);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;}
+nav h1{font-size:20px;color:var(--green);font-weight:900;letter-spacing:2px;text-shadow:0 0 12px var(--green);}
+nav a{color:var(--green);text-decoration:none;font-size:13px;font-weight:600;}
+.hero{text-align:center;padding:60px 24px 40px;}
+.hero h2{font-size:clamp(24px,5vw,42px);font-weight:900;color:#fff;margin-bottom:12px;}
+.hero h2 span{color:var(--green);text-shadow:0 0 20px var(--green);}
+.hero p{color:var(--text2);font-size:16px;max-width:500px;margin:0 auto;}
+.plans{display:flex;flex-wrap:wrap;gap:20px;justify-content:center;padding:20px 24px 60px;max-width:1000px;margin:0 auto;}
+.plan{background:var(--card);border:1px solid #222;border-radius:16px;padding:28px;width:280px;text-align:center;transition:all .3s;position:relative;}
+.plan:hover{border-color:var(--green);box-shadow:0 0 24px rgba(57,255,20,.2);transform:translateY(-4px);}
+.plan.popular{border-color:var(--green);box-shadow:0 0 24px rgba(57,255,20,.3);}
+.plan .badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--green);color:#000;padding:3px 16px;border-radius:20px;font-size:11px;font-weight:800;}
+.plan h3{font-size:20px;color:#fff;margin-bottom:8px;}
+.plan .price{font-size:32px;font-weight:900;color:var(--green);margin:16px 0 4px;}
+.plan .price small{font-size:14px;color:var(--text2);font-weight:400;}
+.plan .features{list-style:none;margin:16px 0 24px;text-align:left;}
+.plan .features li{padding:6px 0;font-size:13px;color:var(--text2);display:flex;align-items:center;gap:8px;}
+.plan .features li::before{content:'\2705';font-size:12px;}
+.btn-buy{width:100%;padding:12px;border-radius:8px;border:1px solid var(--green);background:transparent;color:var(--green);font-size:14px;font-weight:700;cursor:pointer;transition:all .2s;letter-spacing:1px;}
+.btn-buy:hover,.plan.popular .btn-buy{background:var(--green);color:#000;box-shadow:0 0 16px rgba(57,255,20,.4);}
+/* Modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:999;align-items:center;justify-content:center;}
+.modal-overlay.show{display:flex;}
+.modal-box{background:var(--card);border:1px solid var(--green);border-radius:16px;padding:28px;width:420px;max-width:95vw;position:relative;box-shadow:0 0 30px rgba(57,255,20,.2);}
+.modal-box h3{color:var(--green);font-size:16px;margin-bottom:20px;}
+.modal-close{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer;}
+.form-group{margin-bottom:14px;}
+.form-group label{display:block;font-size:11px;color:var(--green);margin-bottom:5px;font-weight:700;letter-spacing:1px;}
+.form-group input,.form-group select{width:100%;background:#000;border:1px solid #333;border-radius:8px;color:#fff;padding:10px 12px;font-size:13px;}
+.form-group input:focus,.form-group select:focus{outline:none;border-color:var(--green);}
+.btn-submit{width:100%;padding:12px;border-radius:8px;border:none;background:var(--green);color:#000;font-size:14px;font-weight:800;cursor:pointer;margin-top:8px;}
+.order-info{background:#0a1a0a;border:1px solid var(--green);border-radius:8px;padding:14px;margin-bottom:18px;}
+.order-info p{font-size:13px;color:var(--text2);margin-bottom:4px;}
+.order-info strong{color:var(--green);}
+.msg{margin-top:12px;padding:10px;border-radius:8px;font-size:13px;text-align:center;display:none;}
+.msg.success{background:#0a1f0a;color:var(--green);border:1px solid var(--green);}
+.msg.error{background:#1f0a0a;color:var(--red);border:1px solid var(--red);}
+.step-success{text-align:center;padding:20px 0;display:none;}
+.step-success .icon{font-size:48px;margin-bottom:12px;}
+.step-success h4{color:var(--green);font-size:18px;font-weight:700;}
+.step-success p{color:var(--text2);font-size:13px;margin-top:8px;line-height:1.6;}
+.step-success .key-box{background:#000;border:1px solid var(--green);border-radius:8px;padding:12px;margin:12px 0;font-family:monospace;font-size:14px;color:var(--green);word-break:break-all;}
+/* Responsive */
+@media(max-width:600px){.plans{padding:16px;}.plan{width:100%;}.hero{padding:40px 16px 20px;}}
+</style>
+</head>
+<body>
+<button class="theme-toggle" onclick="toggleTheme()">&#9728; Mode</button>
+<nav>
+  <h1>&#9881; MESIN-WA</h1>
+  <a href="/">&#128274; Login</a>
+</nav>
+<div class="hero">
+  <h2>Pilih <span>Paket</span> Kamu</h2>
+  <p>Blast WA ke ribuan nomor dengan mudah. Tanpa ribet, langsung jalan.</p>
+</div>
+<div class="plans" id="plansContainer">
+  <div class="plan">
+    <h3>&#127807; Starter</h3>
+    <div class="price">Rp 99.000<small>/bulan</small></div>
+    <ul class="features">
+      <li>500 blast per hari</li>
+      <li>1 nomor WA</li>
+      <li>Upload CSV</li>
+      <li>Inbox real-time</li>
+      <li>Support via WA</li>
+    </ul>
+    <button class="btn-buy" onclick="bukaBeli('Starter','99000','500',30)">Beli Sekarang</button>
+  </div>
+  <div class="plan popular">
+    <div class="badge">&#128293; TERLARIS</div>
+    <h3>&#128640; Pro</h3>
+    <div class="price">Rp 249.000<small>/bulan</small></div>
+    <ul class="features">
+      <li>2.000 blast per hari</li>
+      <li>3 nomor WA</li>
+      <li>Upload CSV</li>
+      <li>Spintax pesan</li>
+      <li>Inbox + Balas</li>
+      <li>Priority support</li>
+    </ul>
+    <button class="btn-buy" onclick="bukaBeli('Pro','249000','2000',30)">Beli Sekarang</button>
+  </div>
+  <div class="plan">
+    <h3>&#127775; Unlimited</h3>
+    <div class="price">Rp 599.000<small>/bulan</small></div>
+    <ul class="features">
+      <li>Unlimited blast</li>
+      <li>10 nomor WA</li>
+      <li>Semua fitur Pro</li>
+      <li>Rotasi nomor otomatis</li>
+      <li>Proxy per nomor</li>
+      <li>VIP support</li>
+    </ul>
+    <button class="btn-buy" onclick="bukaBeli('Unlimited','599000','999999',30)">Beli Sekarang</button>
+  </div>
+</div>
+
+<!-- Modal Order -->
+<div class="modal-overlay" id="orderModal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="tutupModal()">&#10005;</button>
+    <div id="stepForm">
+      <h3>&#128273; Beli Paket <span id="modalPlan"></span></h3>
+      <div class="order-info">
+        <p>Paket: <strong id="oiPlan">-</strong></p>
+        <p>Harga: <strong id="oiHarga">-</strong></p>
+        <p>Durasi: <strong>30 hari</strong></p>
+        <p>Quota: <strong id="oiQuota">-</strong> blast/hari</p>
+      </div>
+      <div class="form-group"><label>USERNAME BARU</label><input type="text" id="oUsername" placeholder="Pilih username untuk akun kamu"></div>
+      <div class="form-group"><label>PASSWORD</label><input type="password" id="oPassword" placeholder="min. 6 karakter"></div>
+      <div class="form-group"><label>NO WA UNTUK KONFIRMASI</label><input type="text" id="oWa" placeholder="628xxxxxxxxxx"></div>
+      <div class="form-group">
+        <label>METODE PEMBAYARAN</label>
+        <select id="oMetode">
+          <option value="transfer">Transfer Bank (BCA/Mandiri/BRI)</option>
+          <option value="dana">DANA</option>
+          <option value="ovo">OVO</option>
+          <option value="gopay">GoPay</option>
+        </select>
+      </div>
+      <button class="btn-submit" onclick="submitOrder()">&#9889; PESAN SEKARANG</button>
+      <div id="msgOrder" class="msg"></div>
+    </div>
+    <div class="step-success" id="stepSuccess">
+      <div class="icon">&#9989;</div>
+      <h4>Pesanan Diterima!</h4>
+      <p>Admin akan menghubungi kamu dalam <strong style="color:var(--green)">15 menit</strong> via WhatsApp untuk instruksi pembayaran.</p>
+      <div class="key-box" id="orderIdBox">-</div>
+      <p>Simpan ID order di atas. Setelah pembayaran dikonfirmasi, akun kamu langsung aktif!</p>
+      <p style="margin-top:12px"><a href="/" style="color:var(--green)">&#8592; Kembali ke Login</a></p>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleTheme(){const h=document.documentElement;h.setAttribute('data-theme',h.getAttribute('data-theme')==='light'?'':'light');localStorage.setItem('theme',h.getAttribute('data-theme'));}
+if(localStorage.getItem('theme')==='light')document.documentElement.setAttribute('data-theme','light');
+
+let currentOrder={};
+
+function bukaBeli(plan,harga,quota,hari){
+    currentOrder={plan,harga,quota,hari};
+    document.getElementById('modalPlan').textContent=plan;
+    document.getElementById('oiPlan').textContent=plan;
+    document.getElementById('oiHarga').textContent='Rp '+parseInt(harga).toLocaleString('id-ID');
+    document.getElementById('oiQuota').textContent=parseInt(quota)===999999?'Unlimited':quota;
+    document.getElementById('stepForm').style.display='block';
+    document.getElementById('stepSuccess').style.display='none';
+    document.getElementById('orderModal').classList.add('show');
+}
+
+function tutupModal(){
+    document.getElementById('orderModal').classList.remove('show');
+}
+
+async function submitOrder(){
+    const username=document.getElementById('oUsername').value.trim();
+    const password=document.getElementById('oPassword').value;
+    const wa=document.getElementById('oWa').value.trim();
+    const metode=document.getElementById('oMetode').value;
+    const msg=document.getElementById('msgOrder');
+    msg.style.display='none';
+    if(!username||!password||!wa){showMsg(msg,'error','Isi semua field!');return;}
+    if(password.length<6){showMsg(msg,'error','Password min. 6 karakter!');return;}
+    if(!/^62\d{8,13}$/.test(wa)){showMsg(msg,'error','Format WA salah! Awali 62.');return;}
+    const res=await fetch('/api/member/order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password,wa,metode,plan:currentOrder.plan,harga:currentOrder.harga,quota:currentOrder.quota,hari:currentOrder.hari})});
+    const data=await res.json();
+    if(data.success){
+        document.getElementById('orderIdBox').textContent='Order ID: '+data.orderId;
+        document.getElementById('stepForm').style.display='none';
+        document.getElementById('stepSuccess').style.display='block';
+    }else showMsg(msg,'error',data.error);
+}
+
+function showMsg(el,type,text){el.className='msg '+type;el.textContent=text;el.style.display='block';}
+</script>
+</body>
+</html>
