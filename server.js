@@ -197,6 +197,68 @@ async function requestGrabNumber({ service, country, operator, server }) {
     return { endpoint, data, number: extractPossibleNumber(data) };
 }
 
+
+async function requestNokosAction(action, params = {}, method = 'GET') {
+    if (!BG_BLAST_API_KEY) throw new Error('BG_BLAST_API_KEY / NOKOS_API_KEY belum diatur.');
+
+    const cleanAction = `${action || ''}`.trim();
+    if (!cleanAction) throw new Error('Action wajib diisi.');
+
+    const endpoint = new URL(`${BG_BLAST_GRAB_BASE}/api/`);
+    endpoint.searchParams.set('action', cleanAction);
+
+    const cleanParams = {};
+    Object.entries(params || {}).forEach(([key, value]) => {
+        if (value === undefined || value === null) return;
+        const text = `${value}`.trim();
+        if (!text) return;
+        cleanParams[key] = text;
+    });
+
+    const upperMethod = `${method || 'GET'}`.toUpperCase();
+    const headers = {
+        'X-API-Key': BG_BLAST_API_KEY,
+        'Accept': 'application/json, text/plain;q=0.9'
+    };
+
+    let body;
+    if (upperMethod === 'GET') {
+        Object.entries(cleanParams).forEach(([key, value]) => endpoint.searchParams.set(key, value));
+    } else {
+        headers['Content-Type'] = 'application/x-www-form-urlencoded';
+        body = new URLSearchParams(cleanParams).toString();
+    }
+
+    const response = await fetch(endpoint.toString(), {
+        method: upperMethod,
+        headers,
+        body
+    });
+
+    const raw = await response.text();
+    let data;
+    try {
+        data = raw ? JSON.parse(raw) : {};
+    } catch (error) {
+        data = { raw };
+    }
+
+    if (!response.ok) {
+        const msg = data?.message || data?.error || raw || `HTTP ${response.status}`;
+        throw new Error(`${cleanAction} gagal: ${msg}`);
+    }
+
+    return { endpoint: endpoint.toString(), data };
+}
+
+async function requestGrabStatus(id) {
+    return requestNokosAction('getStatus', { id }, 'GET');
+}
+
+async function requestSetStatus(id, status) {
+    return requestNokosAction('setStatus', { id, status }, 'POST');
+}
+
 function seedData() {
     let users = readJSON('data/users.json');
     if (!fs.existsSync('data/licenses.json')) writeJSON('data/licenses.json', [
@@ -587,6 +649,33 @@ async function handleGrabNumber(req, res) {
 
 app.post('/api/admin/bgblast/grab-number', requireAdmin, handleGrabNumber);
 app.post('/api/admin/nokos/grab-number', requireAdmin, handleGrabNumber);
+
+
+app.get('/api/admin/bgblast/get-status', requireAdmin, async (req, res) => {
+    try {
+        const id = `${req.query.id || ''}`.trim();
+        if (!id) return res.status(400).json({ success: false, error: 'id wajib diisi.' });
+
+        const result = await requestGrabStatus(id);
+        return res.json({ success: true, id, endpoint: result.endpoint, data: result.data });
+    } catch (error) {
+        return res.status(502).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/admin/bgblast/set-status', requireAdmin, async (req, res) => {
+    try {
+        const id = `${req.body?.id || ''}`.trim();
+        const status = `${req.body?.status || ''}`.trim();
+        if (!id) return res.status(400).json({ success: false, error: 'id wajib diisi.' });
+        if (!status) return res.status(400).json({ success: false, error: 'status wajib diisi.' });
+
+        const result = await requestSetStatus(id, status);
+        return res.json({ success: true, id, status, endpoint: result.endpoint, data: result.data });
+    } catch (error) {
+        return res.status(502).json({ success: false, error: error.message });
+    }
+});
 
 
 // ─── WA User Routes ──────────────────────────────────────────────────────────

@@ -346,6 +346,19 @@ body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text);mi
             <span id="grabNomorInfo" style="font-size:12px;color:var(--text2);align-self:center;">-</span>
           </div>
           <pre id="grabNomorRaw" style="margin-top:8px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px;max-height:220px;overflow:auto;font-size:10px;color:var(--text2);">-</pre>
+          <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+            <h4 style="margin-bottom:8px;">CEK OTP / SET STATUS</h4>
+            <div class="admin-form" style="display:grid;grid-template-columns:2fr 1fr;gap:8px;">
+              <input type="text" id="statusNomorId" placeholder="id transaksi, contoh: 38496653">
+              <input type="text" id="setStatusCode" placeholder="status" value="6">
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+              <button class="btn-admin" style="width:auto;padding:6px 12px" onclick="checkBgBlastStatus()">&#128269; Cek Status</button>
+              <button class="btn-admin" style="width:auto;padding:6px 12px" onclick="setBgBlastStatus()">&#9851; Set Status</button>
+              <span id="statusNomorInfo" style="font-size:12px;color:var(--text2);align-self:center;">-</span>
+            </div>
+            <pre id="statusNomorRaw" style="margin-top:8px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px;max-height:220px;overflow:auto;font-size:10px;color:var(--text2);">-</pre>
+          </div>
         </div>
       </div>
     </div>
@@ -502,6 +515,61 @@ async function grabBgBlastNumber(){
         }
 
         info.textContent=data.number?('[OK] Nomor: '+data.number):'[OK] Request sukses, cek raw response';
+        raw.textContent=JSON.stringify(data,null,2);
+    }catch(e){
+        info.textContent='[ERROR] '+e.message;
+        raw.textContent='Error: '+e.message;
+    }
+}
+
+
+async function checkBgBlastStatus(){
+    const id=document.getElementById('statusNomorId').value.trim();
+    const info=document.getElementById('statusNomorInfo');
+    const raw=document.getElementById('statusNomorRaw');
+    if(!id){alert('Isi id transaksi dulu.');return;}
+
+    info.textContent='Cek status...';
+    raw.textContent='Loading...';
+    try{
+        const res=await fetch('/api/admin/bgblast/get-status?id='+encodeURIComponent(id));
+        const data=await res.json();
+        if(!data.success){
+            info.textContent='[ERROR] '+(data.error||'Gagal cek status');
+            raw.textContent=JSON.stringify(data,null,2);
+            return;
+        }
+        info.textContent='[OK] Status berhasil diambil';
+        raw.textContent=JSON.stringify(data,null,2);
+    }catch(e){
+        info.textContent='[ERROR] '+e.message;
+        raw.textContent='Error: '+e.message;
+    }
+}
+
+async function setBgBlastStatus(){
+    const id=document.getElementById('statusNomorId').value.trim();
+    const status=document.getElementById('setStatusCode').value.trim();
+    const info=document.getElementById('statusNomorInfo');
+    const raw=document.getElementById('statusNomorRaw');
+    if(!id){alert('Isi id transaksi dulu.');return;}
+    if(!status){alert('Isi status dulu.');return;}
+
+    info.textContent='Set status...';
+    raw.textContent='Loading...';
+    try{
+        const res=await fetch('/api/admin/bgblast/set-status',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({id,status})
+        });
+        const data=await res.json();
+        if(!data.success){
+            info.textContent='[ERROR] '+(data.error||'Gagal set status');
+            raw.textContent=JSON.stringify(data,null,2);
+            return;
+        }
+        info.textContent='[OK] Status berhasil diupdate';
         raw.textContent=JSON.stringify(data,null,2);
     }catch(e){
         info.textContent='[ERROR] '+e.message;
