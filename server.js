@@ -28,6 +28,11 @@ const PORT           = process.env.PORT || 3000;
 const SESSION_SECRET = process.env.SESSION_SECRET || 'wa-blast-secret-2026';
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+const NOKOS_API_BASE = (process.env.NOKOS_API_BASE || 'https://api.nokos.co.id').replace(/\/+$/, '');
+const NOKOS_API_KEY = (process.env.NOKOS_API_KEY || '').trim();
+const NOKOS_TIMEOUT_MS = Number(process.env.NOKOS_TIMEOUT_MS || 15000);
+const NOKOS_APPLICATION_PATHS = (process.env.NOKOS_APPLICATION_PATHS || '/api/applications,/api/services,/v1/applications,/v1/services').split(',').map(s => s.trim()).filter(Boolean);
+const NOKOS_RANGE_PATHS = (process.env.NOKOS_RANGE_PATHS || '/api/ranges,/api/top-ranges,/v1/ranges,/v1/top-ranges').split(',').map(s => s.trim()).filter(Boolean);
 
 if (!fs.existsSync('data'))    fs.mkdirSync('data',    { recursive: true });
 if (!fs.existsSync('uploads')) fs.mkdirSync('uploads', { recursive: true });
@@ -53,6 +58,78 @@ function makeProxyAgent(proxyUrl) {
         if (['http:', 'https:'].includes(url.protocol)) return new HttpsProxyAgent(proxyUrl.trim());
         return null;
     } catch (e) { return null; }
+}
+
+function extractArrayPayload(payload) {
+    if (Array.isArray(payload)) return payload;
+    if (!payload || typeof payload !== 'object') return [];
+    const preferredKeys = ['data', 'items', 'results', 'applications', 'ranges', 'list'];
+    for (const key of preferredKeys) {
+        if (Array.isArray(payload[key])) return payload[key];
+    }
+    for (const value of Object.values(payload)) {
+        if (Array.isArray(value)) return value;
+    }
+    return [];
+}
+
+async function fetchNokos(pathname, method = 'GET', requestBody = null) {
+    if (!NOKOS_API_KEY) throw new Error('NOKOS_API_KEY belum diset');
+    if (!pathname || typeof pathname !== 'string' || !pathname.startsWith('/')) {
+        throw new Error('Path endpoint NOKOS harus diawali "/"');
+    }
+
+    const url = new URL(`${NOKOS_API_BASE}${pathname}`);
+    if (!url.searchParams.has('apikey')) url.searchParams.set('apikey', NOKOS_API_KEY);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), NOKOS_TIMEOUT_MS);
+
+    const headers = {
+        'Accept': 'application/json',
+        'x-api-key': NOKOS_API_KEY,
+        'Authorization': `Bearer ${NOKOS_API_KEY}`
+    };
+    if (requestBody) headers['Content-Type'] = 'application/json';
+
+    try {
+        const response = await fetch(url.toString(), {
+            method,
+            headers,
+            body: requestBody ? JSON.stringify(requestBody) : undefined,
+            signal: controller.signal
+        });
+
+        const raw = await response.text();
+        let parsed;
+        try {
+            parsed = raw ? JSON.parse(raw) : {};
+        } catch (error) {
+            parsed = { raw };
+        }
+
+        if (!response.ok) {
+            const errorMessage = parsed?.message || parsed?.error || raw || 'Unknown NOKOS API error';
+            throw new Error(`NOKOS API ${response.status}: ${errorMessage}`);
+        }
+
+        return parsed;
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+async function fetchFromCandidates(candidates) {
+    const errors = [];
+    for (const candidate of candidates) {
+        try {
+            const data = await fetchNokos(candidate);
+            return { path: candidate, data };
+        } catch (error) {
+            errors.push(`${candidate}: ${error.message}`);
+        }
+    }
+    throw new Error(errors.join(' | '));
 }
 
 function seedData() {
@@ -369,6 +446,58 @@ app.post('/api/admin/users/:id/extend',requireAdmin,(req,res)=>{ const {days}=re
 app.delete('/api/admin/users/:id',requireAdmin,(req,res)=>{ const users=readJSON('data/users.json'),user=users.find(u=>u.id===req.params.id); if(!user) return res.json({success:false,error:'User tidak ditemukan!'}); if(user.role==='admin') return res.json({success:false,error:'Tidak bisa hapus admin!'}); const ses=getUserSession(user.id); if(ses.sock){try{ses.sock.end();}catch(e){}} delete sessions[user.id]; io.to(`user:${user.id}`).emit('force-logout',{msg:'Akun dihapus.'}); writeJSON('data/users.json',users.filter(u=>u.id!==req.params.id)); res.json({success:true,msg:`\u2705 ${user.username} dihapus.`}); });
 app.post('/api/admin/generate-key',requireAdmin,(req,res)=>{ const {plan,credit,durasiHari}=req.body; if(!plan||!credit||!durasiHari) return res.json({success:false,error:'Lengkapi field!'}); const key=`${plan.toUpperCase()}-${uuidv4().slice(0,8).toUpperCase()}`; const licenses=readJSON('data/licenses.json'); licenses.push({key,plan,credit:parseInt(credit),durasiHari:parseInt(durasiHari),usedBy:null,usedAt:null,createdAt:new Date().toISOString()}); writeJSON('data/licenses.json',licenses); res.json({success:true,key}); });
 app.get('/api/admin/licenses',requireAdmin,(req,res)=>res.json(readJSON('data/licenses.json')));
+
+app.get('/api/admin/nokos/overview', requireAdmin, async (req, res) => {
+    if (!NOKOS_API_KEY) {
+        return res.status(400).json({ success: false, error: 'NOKOS_API_KEY belum diatur di environment.' });
+    }
+
+    const warnings = [];
+    let applications = [];
+    let ranges = [];
+    let applicationsPath = null;
+    let rangesPath = null;
+
+    try {
+        const appResult = await fetchFromCandidates(NOKOS_APPLICATION_PATHS);
+        applications = extractArrayPayload(appResult.data);
+        applicationsPath = appResult.path;
+    } catch (error) {
+        warnings.push(`Applications: ${error.message}`);
+    }
+
+    try {
+        const rangeResult = await fetchFromCandidates(NOKOS_RANGE_PATHS);
+        ranges = extractArrayPayload(rangeResult.data);
+        rangesPath = rangeResult.path;
+    } catch (error) {
+        warnings.push(`Ranges: ${error.message}`);
+    }
+
+    return res.json({
+        success: true,
+        baseUrl: NOKOS_API_BASE,
+        applicationsPath,
+        rangesPath,
+        applications,
+        ranges,
+        warnings
+    });
+});
+
+app.get('/api/admin/nokos/proxy', requireAdmin, async (req, res) => {
+    const targetPath = `${req.query.path || ''}`.trim();
+    if (!targetPath.startsWith('/')) {
+        return res.status(400).json({ success: false, error: 'Query path wajib dan harus diawali "/"' });
+    }
+
+    try {
+        const data = await fetchNokos(targetPath);
+        return res.json({ success: true, path: targetPath, data });
+    } catch (error) {
+        return res.status(502).json({ success: false, error: error.message });
+    }
+});
 
 // ─── WA User Routes ──────────────────────────────────────────────────────────
 app.get('/api/status',requireLogin,(req,res)=>{

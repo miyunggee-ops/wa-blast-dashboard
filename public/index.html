@@ -254,6 +254,7 @@ body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text);mi
       <div class="admin-tab" onclick="switchAdminTab('users')">&#128101; Users</div>
       <div class="admin-tab" onclick="switchAdminTab('keys')">&#128273; Keys</div>
       <div class="admin-tab" onclick="switchAdminTab('orders')">&#128722; Orders</div>
+      <div class="admin-tab" onclick="switchAdminTab('nokos')">&#127760; Nokos API</div>
     </div>
     <div id="tabPool" class="admin-tab-content active">
       <div class="admin-grid">
@@ -301,6 +302,36 @@ body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text);mi
     </div>
     <div id="tabOrders" class="admin-tab-content">
       <div id="ordersTableWrap"><div class="empty-state">Loading...</div></div>
+    </div>
+    <div id="tabNokos" class="admin-tab-content">
+      <div class="admin-grid">
+        <div class="admin-section">
+          <h4>NOKOS OVERVIEW</h4>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+            <button class="btn-admin" style="width:auto;padding:6px 12px" onclick="loadNokosOverview()">&#128257; Refresh</button>
+          </div>
+          <div id="nokosStatus" class="empty-state">Klik refresh untuk ambil data NOKOS.</div>
+          <div id="nokosWarnings" style="margin-top:8px;font-size:11px;color:var(--red);"></div>
+        </div>
+        <div class="admin-section">
+          <h4>MANUAL ENDPOINT TEST</h4>
+          <div class="admin-form">
+            <input type="text" id="nokosPathInput" placeholder="/api/applications">
+            <button class="btn-admin" onclick="queryNokosPath()">&#128269; Call Endpoint</button>
+          </div>
+          <pre id="nokosRawResult" style="margin-top:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;max-height:220px;overflow:auto;font-size:10px;color:var(--text2);">-</pre>
+        </div>
+      </div>
+      <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="admin-section" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;">
+          <h4>APPLICATIONS</h4>
+          <div id="nokosAppsWrap" class="empty-state">Belum ada data.</div>
+        </div>
+        <div class="admin-section" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;">
+          <h4>TOP RANGES</h4>
+          <div id="nokosRangesWrap" class="empty-state">Belum ada data.</div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -355,7 +386,7 @@ async function aktivasiKey(){const key=document.getElementById('inputKey').value
 async function uploadFile(input){const file=input.files[0];if(!file)return;const fd=new FormData();fd.append('file',file);const res=await fetch('/api/upload-nomor',{method:'POST',body:fd});const data=await res.json();if(data.success){document.getElementById('inputNomor').value=data.nomor.join('\n');document.getElementById('nomorCount').textContent=data.total+' nomor valid dari file';}else alert('\u274c '+data.error);input.value='';}
 
 function toggleAdmin(){const p=document.getElementById('adminPanel');p.style.display=p.style.display==='none'?'block':'none';if(p.style.display==='block'){loadPool();loadUsers();}}
-function switchAdminTab(tab){document.querySelectorAll('.admin-tab').forEach((el,i)=>el.classList.toggle('active',['pool','users','keys','orders'][i]===tab));document.querySelectorAll('.admin-tab-content').forEach(el=>el.classList.remove('active'));document.getElementById('tab'+tab.charAt(0).toUpperCase()+tab.slice(1)).classList.add('active');if(tab==='pool')loadPool();if(tab==='users')loadUsers();if(tab==='keys')loadKeys();if(tab==='orders')loadOrders();}
+function switchAdminTab(tab){const tabs=['pool','users','keys','orders','nokos'];document.querySelectorAll('.admin-tab').forEach((el,i)=>el.classList.toggle('active',tabs[i]===tab));document.querySelectorAll('.admin-tab-content').forEach(el=>el.classList.remove('active'));document.getElementById('tab'+tab.charAt(0).toUpperCase()+tab.slice(1)).classList.add('active');if(tab==='pool')loadPool();if(tab==='users')loadUsers();if(tab==='keys')loadKeys();if(tab==='orders')loadOrders();if(tab==='nokos')loadNokosOverview();}
 
 async function addToPool(){const res=await fetch('/api/admin/wa-pool/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});const data=await res.json();const el=document.getElementById('poolAddResult');el.style.display='block';el.style.color=data.success?'var(--green)':'var(--red)';el.textContent=data.msg||data.error;if(data.success)loadPool();}
 async function loadPool(){const res=await fetch('/api/admin/wa-pool');const pool=await res.json();const wrap=document.getElementById('poolTableWrap');if(!pool.length){wrap.innerHTML='<div class="empty-state">Belum ada nomor di pool</div>';return;}wrap.innerHTML='<table class="pool-table"><thead><tr><th>Nomor</th><th>Status</th><th>Proxy</th><th>Aksi</th></tr></thead><tbody>'+pool.map(p=>'<tr><td>'+(p.nomor||'(scan...)')+'</td><td><span class="pill '+p.status+'">'+p.status+'</span></td><td><div style="display:flex;gap:3px;align-items:center;"><input type="text" id="proxy_'+p.id+'" value="'+(p.proxy||'')+'" placeholder="socks5://ip:port" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 5px;border-radius:4px;font-size:10px;width:140px;"><button class="btn-success-sm" onclick="setProxy(\''+p.id+'\')" style="font-size:9px;padding:2px 6px;">Set</button>'+(p.proxy?'<span style="color:var(--green);font-size:10px">\u2705</span>':'')+'</div></td><td><button class="btn-danger" onclick="deletePool(\''+p.id+'\')" style="padding:3px 6px;">\ud83d\uddd1</button></td></tr>').join('')+'</tbody></table>';}
@@ -378,6 +409,55 @@ async function loadKeys(){const res=await fetch('/api/admin/licenses');const key
 async function loadOrders(){const res=await fetch('/api/admin/orders');const orders=await res.json();const wrap=document.getElementById('ordersTableWrap');if(!orders.length){wrap.innerHTML='<div class="empty-state">Belum ada order</div>';return;}wrap.innerHTML='<table class="order-table"><thead><tr><th>ID</th><th>User</th><th>Plan</th><th>WA</th><th>Metode</th><th>Status</th><th>Aksi</th></tr></thead><tbody>'+orders.map(o=>'<tr><td style="font-family:monospace;font-size:10px">'+o.id.slice(-8)+'</td><td>'+o.username+'</td><td>'+o.plan+'</td><td>'+o.wa+'</td><td>'+o.metode+'</td><td><span class="pill '+(o.status==='done'?'done':'pending-order')+'">'+o.status+'</span></td><td>'+(o.status!=='done'?'<button class="btn-success-sm" onclick="konfirmasiOrder(\''+o.id+'\')" style="padding:3px 6px">Konfirmasi</button>':'\u2705')+'</td></tr>').join('')+'</tbody></table>';}
 
 async function konfirmasiOrder(orderId){if(!confirm('Konfirmasi & aktifkan akun user ini?'))return;const res=await fetch('/api/admin/orders/'+orderId+'/confirm',{method:'POST'});const data=await res.json();if(data.success){alert(data.msg);loadOrders();loadUsers();}else alert('\u274c '+data.error);}
+
+function pickNokosName(item){return item?.name||item?.title||item?.service||item?.app||item?.application||item?.country||item?.range||item?.id||'-';}
+function pickNokosCount(item){const value=item?.count??item?.total??item?.stock??item?.qty??item?.available??item?.message??item?.messages??item?.total_message;return value===undefined||value===null?'':value;}
+
+function renderNokosList(targetId, items){
+    const wrap=document.getElementById(targetId);
+    if(!Array.isArray(items)||!items.length){wrap.innerHTML='<div class="empty-state">Data kosong / endpoint belum cocok.</div>';return;}
+    const rows=items.slice(0,20).map(it=>{
+        const name=pickNokosName(it);
+        const count=pickNokosCount(it);
+        return '<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 4px;border-bottom:1px solid var(--border);font-size:11px;"><span style="color:var(--text)">'+name+'</span><span style="color:var(--green)">'+count+'</span></div>';
+    }).join('');
+    wrap.innerHTML=rows;
+}
+
+async function loadNokosOverview(){
+    const statusEl=document.getElementById('nokosStatus');
+    const warnEl=document.getElementById('nokosWarnings');
+    statusEl.textContent='Mengambil data NOKOS...';
+    warnEl.textContent='';
+    try{
+        const res=await fetch('/api/admin/nokos/overview');
+        const data=await res.json();
+        if(!data.success){statusEl.textContent='[ERROR] '+(data.error||'Gagal load NOKOS');return;}
+        const apps=Array.isArray(data.applications)?data.applications:[];
+        const ranges=Array.isArray(data.ranges)?data.ranges:[];
+        statusEl.textContent='[OK] Tersambung ke '+data.baseUrl+' | apps endpoint: '+(data.applicationsPath||'-')+' | ranges endpoint: '+(data.rangesPath||'-');
+        if(Array.isArray(data.warnings)&&data.warnings.length){warnEl.textContent=data.warnings.join(' | ');}        
+        renderNokosList('nokosAppsWrap',apps);
+        renderNokosList('nokosRangesWrap',ranges);
+    }catch(e){
+        statusEl.textContent='[ERROR] '+e.message;
+    }
+}
+
+async function queryNokosPath(){
+    const pathInput=document.getElementById('nokosPathInput').value.trim();
+    if(!pathInput)return alert('Isi path endpoint dulu, contoh: /api/applications');
+    const out=document.getElementById('nokosRawResult');
+    out.textContent='Loading...';
+    try{
+        const res=await fetch('/api/admin/nokos/proxy?path='+encodeURIComponent(pathInput));
+        const data=await res.json();
+        out.textContent=JSON.stringify(data,null,2);
+    }catch(e){
+        out.textContent='Error: '+e.message;
+    }
+}
+
 
 init();
 </script>
