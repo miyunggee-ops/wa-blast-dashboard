@@ -355,6 +355,8 @@ body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text);mi
             <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
               <button class="btn-admin" style="width:auto;padding:6px 12px" onclick="checkBgBlastStatus()">&#128269; Cek Status</button>
               <button class="btn-admin" style="width:auto;padding:6px 12px" onclick="setBgBlastStatus()">&#9851; Set Status</button>
+              <button class="btn-admin" style="width:auto;padding:6px 12px" onclick="setBgBlastStatus('1')">Set Success (1)</button>
+              <button class="btn-admin" style="width:auto;padding:6px 12px" onclick="setBgBlastStatus('6')">Set Cancel (6)</button>
               <span id="statusNomorInfo" style="font-size:12px;color:var(--text2);align-self:center;">-</span>
             </div>
             <pre id="statusNomorRaw" style="margin-top:8px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px;max-height:220px;overflow:auto;font-size:10px;color:var(--text2);">-</pre>
@@ -547,9 +549,9 @@ async function checkBgBlastStatus(){
     }
 }
 
-async function setBgBlastStatus(){
+async function setBgBlastStatus(forceStatus=''){
     const id=document.getElementById('statusNomorId').value.trim();
-    const status=document.getElementById('setStatusCode').value.trim();
+    const status=(forceStatus||document.getElementById('setStatusCode').value.trim());
     const info=document.getElementById('statusNomorInfo');
     const raw=document.getElementById('statusNomorRaw');
     if(!id){alert('Isi id transaksi dulu.');return;}
