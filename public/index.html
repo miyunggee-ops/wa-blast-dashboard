@@ -254,7 +254,7 @@ body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text);mi
       <div class="admin-tab" onclick="switchAdminTab('users')">&#128101; Users</div>
       <div class="admin-tab" onclick="switchAdminTab('keys')">&#128273; Keys</div>
       <div class="admin-tab" onclick="switchAdminTab('orders')">&#128722; Orders</div>
-      <div class="admin-tab" onclick="switchAdminTab('nokos')">&#127760; Nokos API</div>
+      <div class="admin-tab" onclick="switchAdminTab('nokos')">&#127760; Grab Nomor</div>
     </div>
     <div id="tabPool" class="admin-tab-content active">
       <div class="admin-grid">
@@ -306,11 +306,11 @@ body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text);mi
     <div id="tabNokos" class="admin-tab-content">
       <div class="admin-grid">
         <div class="admin-section">
-          <h4>NOKOS OVERVIEW</h4>
+          <h4>GRAB NOMOR OVERVIEW</h4>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
             <button class="btn-admin" style="width:auto;padding:6px 12px" onclick="loadNokosOverview()">&#128257; Refresh</button>
           </div>
-          <div id="nokosStatus" class="empty-state">Klik refresh untuk ambil data NOKOS.</div>
+          <div id="nokosStatus" class="empty-state">Klik refresh untuk ambil data Grab Nomor.</div>
           <div id="nokosWarnings" style="margin-top:8px;font-size:11px;color:var(--red);"></div>
         </div>
         <div class="admin-section">
@@ -427,15 +427,15 @@ function renderNokosList(targetId, items){
 async function loadNokosOverview(){
     const statusEl=document.getElementById('nokosStatus');
     const warnEl=document.getElementById('nokosWarnings');
-    statusEl.textContent='Mengambil data NOKOS...';
+    statusEl.textContent='Mengambil data Grab Nomor...';
     warnEl.textContent='';
     try{
         const res=await fetch('/api/admin/nokos/overview');
         const data=await res.json();
-        if(!data.success){statusEl.textContent='[ERROR] '+(data.error||'Gagal load NOKOS');return;}
+        if(!data.success){statusEl.textContent='[ERROR] '+(data.error||'Gagal load data Grab Nomor');return;}
         const apps=Array.isArray(data.applications)?data.applications:[];
         const ranges=Array.isArray(data.ranges)?data.ranges:[];
-        statusEl.textContent='[OK] Tersambung ke '+data.baseUrl+' | apps endpoint: '+(data.applicationsPath||'-')+' | ranges endpoint: '+(data.rangesPath||'-');
+        statusEl.textContent='[OK] Data Grab Nomor berhasil dimuat | apps endpoint: '+(data.applicationsPath||'-')+' | ranges endpoint: '+(data.rangesPath||'-');
         if(Array.isArray(data.warnings)&&data.warnings.length){warnEl.textContent=data.warnings.join(' | ');}        
         renderNokosList('nokosAppsWrap',apps);
         renderNokosList('nokosRangesWrap',ranges);
