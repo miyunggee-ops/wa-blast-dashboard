@@ -118,6 +118,20 @@ body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text);mi
 .admin-form input,.admin-form select{background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 9px;font-size:11px;}
 .admin-form input:focus,.admin-form select:focus{outline:none;border-color:var(--green);}
 .btn-admin{background:var(--yellow);color:#000;padding:8px;border-radius:6px;border:none;font-size:11px;font-weight:800;cursor:pointer;width:100%;}
+/* BG Blast panel */
+.bgblast-stack{display:flex;flex-direction:column;gap:12px;}
+.bgblast-card{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;}
+.bgblast-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.bgblast-grid-4{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px;}
+.bgblast-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.bgblast-status{font-size:11px;color:var(--text2);padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);}
+.bgblast-status.ok{color:var(--green);border-color:var(--green);background:rgba(57,255,20,.08);}
+.bgblast-status.error{color:var(--red);border-color:var(--red);background:rgba(255,71,87,.08);}
+.bgblast-status.warn{color:var(--yellow);border-color:var(--yellow);background:rgba(255,215,0,.08);}
+.bgblast-raw{display:none;margin-top:8px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px;max-height:220px;overflow:auto;font-size:10px;color:var(--text2);}
+.bgblast-raw.show{display:block;}
+.bgblast-actions .btn-admin{width:auto;padding:6px 12px;}
+@media(max-width:900px){.bgblast-grid-2,.bgblast-grid-4{grid-template-columns:1fr;}}
 .btn-danger{background:rgba(255,71,87,.15);color:var(--red);padding:4px 8px;border-radius:4px;border:1px solid var(--red);font-size:10px;cursor:pointer;}
 .btn-warn{background:rgba(255,149,0,.15);color:#ff9500;padding:4px 8px;border-radius:4px;border:1px solid #ff9500;font-size:10px;cursor:pointer;}
 .btn-info{background:rgba(57,255,20,.1);color:var(--green);padding:4px 8px;border-radius:4px;border:1px solid var(--green);font-size:10px;cursor:pointer;}
@@ -254,7 +268,7 @@ body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text);mi
       <div class="admin-tab" onclick="switchAdminTab('users')">&#128101; Users</div>
       <div class="admin-tab" onclick="switchAdminTab('keys')">&#128273; Keys</div>
       <div class="admin-tab" onclick="switchAdminTab('orders')">&#128722; Orders</div>
-      <div class="admin-tab" onclick="switchAdminTab('nokos')">&#127760; BG Blast</div>
+      <div class="admin-tab" onclick="switchAdminTab('nokos')">&#127760; BG Blast - by BGSHOP</div>
     </div>
     <div id="tabPool" class="admin-tab-content active">
       <div class="admin-grid">
@@ -304,62 +318,68 @@ body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text);mi
       <div id="ordersTableWrap"><div class="empty-state">Loading...</div></div>
     </div>
     <div id="tabNokos" class="admin-tab-content">
-      <div class="admin-grid">
-        <div class="admin-section">
-          <h4>BG BLAST OVERVIEW</h4>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-            <button class="btn-admin" style="width:auto;padding:6px 12px" onclick="loadNokosOverview()">&#128257; Refresh</button>
+      <div class="bgblast-stack">
+        <div class="admin-grid">
+          <div class="admin-section">
+            <h4>BG BLAST - by BGSHOP OVERVIEW</h4>
+            <div class="bgblast-row bgblast-actions">
+              <button class="btn-admin" onclick="loadNokosOverview()">&#128257; Refresh</button>
+            </div>
+            <div id="nokosStatus" class="bgblast-status">Klik refresh untuk ambil data BG Blast - by BGSHOP.</div>
+            <div id="nokosWarnings" class="bgblast-status" style="display:none;"></div>
           </div>
-          <div id="nokosStatus" class="empty-state">Klik refresh untuk ambil data BG Blast.</div>
-          <div id="nokosWarnings" style="margin-top:8px;font-size:11px;color:var(--red);"></div>
-        </div>
-        <div class="admin-section">
-          <h4>MANUAL ENDPOINT TEST</h4>
-          <div class="admin-form">
-            <input type="text" id="nokosPathInput" placeholder="/api/applications">
-            <button class="btn-admin" onclick="queryNokosPath()">&#128269; Call Endpoint</button>
+          <div class="admin-section">
+            <h4>MANUAL ENDPOINT TEST</h4>
+            <div class="admin-form">
+              <input type="text" id="nokosPathInput" placeholder="/api/applications">
+              <button class="btn-admin" onclick="queryNokosPath()">&#128269; Call Endpoint</button>
+              <button class="btn-admin" onclick="toggleRaw('nokosRawResult')">Toggle Raw</button>
+            </div>
+            <pre id="nokosRawResult" class="bgblast-raw">-</pre>
           </div>
-          <pre id="nokosRawResult" style="margin-top:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;max-height:220px;overflow:auto;font-size:10px;color:var(--text2);">-</pre>
         </div>
-      </div>
-      <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div class="admin-section" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;">
-          <h4>APPLICATIONS</h4>
-          <div id="nokosAppsWrap" class="empty-state">Belum ada data.</div>
+
+        <div class="bgblast-grid-2">
+          <div class="bgblast-card">
+            <h4>APPLICATIONS</h4>
+            <div id="nokosAppsWrap" class="empty-state">Belum ada data.</div>
+          </div>
+          <div class="bgblast-card">
+            <h4>TOP RANGES</h4>
+            <div id="nokosRangesWrap" class="empty-state">Belum ada data.</div>
+          </div>
         </div>
-        <div class="admin-section" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;">
-          <h4>TOP RANGES</h4>
-          <div id="nokosRangesWrap" class="empty-state">Belum ada data.</div>
-        </div>
-      </div>
-      <div style="margin-top:12px;">
-        <div class="admin-section" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;">
+
+        <div class="bgblast-card">
           <h4>GRAB NOMOR (INSTANT)</h4>
-          <div class="admin-form" style="display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px;">
+          <div class="bgblast-grid-4">
             <input type="text" id="grabService" placeholder="service" value="wa">
             <input type="text" id="grabCountry" placeholder="country" value="6">
             <input type="text" id="grabOperator" placeholder="operator" value="telkomsel">
             <input type="text" id="grabServer" placeholder="server" value="s2">
           </div>
-          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
-            <button class="btn-admin" style="width:auto;padding:6px 12px" onclick="grabBgBlastNumber()">&#128241; Grab Nomor</button>
-            <span id="grabNomorInfo" style="font-size:12px;color:var(--text2);align-self:center;">-</span>
+          <div class="bgblast-row bgblast-actions" style="margin-top:8px;">
+            <button class="btn-admin" onclick="grabBgBlastNumber()">&#128241; Grab Nomor</button>
+            <button class="btn-admin" onclick="toggleRaw('grabNomorRaw')">Toggle Raw</button>
+            <span id="grabNomorInfo" class="bgblast-status">-</span>
           </div>
-          <pre id="grabNomorRaw" style="margin-top:8px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px;max-height:220px;overflow:auto;font-size:10px;color:var(--text2);">-</pre>
+          <pre id="grabNomorRaw" class="bgblast-raw">-</pre>
+
           <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
             <h4 style="margin-bottom:8px;">CEK OTP / SET STATUS</h4>
-            <div class="admin-form" style="display:grid;grid-template-columns:2fr 1fr;gap:8px;">
+            <div class="bgblast-grid-2">
               <input type="text" id="statusNomorId" placeholder="id transaksi, contoh: 38496653">
               <input type="text" id="setStatusCode" placeholder="status" value="6">
             </div>
-            <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
-              <button class="btn-admin" style="width:auto;padding:6px 12px" onclick="checkBgBlastStatus()">&#128269; Cek Status</button>
-              <button class="btn-admin" style="width:auto;padding:6px 12px" onclick="setBgBlastStatus()">&#9851; Set Status</button>
-              <button class="btn-admin" style="width:auto;padding:6px 12px" onclick="setBgBlastStatus('1')">Set Success (1)</button>
-              <button class="btn-admin" style="width:auto;padding:6px 12px" onclick="setBgBlastStatus('6')">Set Cancel (6)</button>
-              <span id="statusNomorInfo" style="font-size:12px;color:var(--text2);align-self:center;">-</span>
+            <div class="bgblast-row bgblast-actions" style="margin-top:8px;">
+              <button class="btn-admin" onclick="checkBgBlastStatus()">&#128269; Cek Status</button>
+              <button class="btn-admin" onclick="setBgBlastStatus()">&#9851; Set Status</button>
+              <button class="btn-admin" onclick="setBgBlastStatus('1')">Set Success (1)</button>
+              <button class="btn-admin" onclick="setBgBlastStatus('6')">Set Cancel (6)</button>
+              <button class="btn-admin" onclick="toggleRaw('statusNomorRaw')">Toggle Raw</button>
+              <span id="statusNomorInfo" class="bgblast-status">-</span>
             </div>
-            <pre id="statusNomorRaw" style="margin-top:8px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px;max-height:220px;overflow:auto;font-size:10px;color:var(--text2);">-</pre>
+            <pre id="statusNomorRaw" class="bgblast-raw">-</pre>
           </div>
         </div>
       </div>
@@ -444,6 +464,9 @@ async function konfirmasiOrder(orderId){if(!confirm('Konfirmasi & aktifkan akun 
 function pickNokosName(item){return item?.name||item?.title||item?.service||item?.app||item?.application||item?.country||item?.range||item?.id||'-';}
 function pickNokosCount(item){const value=item?.count??item?.total??item?.stock??item?.qty??item?.available??item?.message??item?.messages??item?.total_message;return value===undefined||value===null?'':value;}
 
+function setBgblastState(el,type,text){el.className='bgblast-status '+type;el.textContent=text;}
+function toggleRaw(id){const el=document.getElementById(id);if(!el)return;el.classList.toggle('show');}
+
 function renderNokosList(targetId, items){
     const wrap=document.getElementById(targetId);
     if(!Array.isArray(items)||!items.length){wrap.innerHTML='<div class="empty-state">Data kosong / endpoint belum cocok.</div>';return;}
@@ -458,27 +481,37 @@ function renderNokosList(targetId, items){
 async function loadNokosOverview(){
     const statusEl=document.getElementById('nokosStatus');
     const warnEl=document.getElementById('nokosWarnings');
-    statusEl.textContent='Mengambil data BG Blast...';
+    setBgblastState(statusEl,'','Mengambil data BG Blast - by BGSHOP...');
+    warnEl.style.display='none';
     warnEl.textContent='';
+    warnEl.className='bgblast-status';
     try{
         const res=await fetch('/api/admin/nokos/overview');
         const data=await res.json();
-        if(!data.success){statusEl.textContent='[ERROR] '+(data.error||'Gagal load data BG Blast');return;}
+        if(!data.success){setBgblastState(statusEl,'error','Gagal load data BG Blast - by BGSHOP: '+(data.error||'unknown'));return;}
         const apps=Array.isArray(data.applications)?data.applications:[];
         const ranges=Array.isArray(data.ranges)?data.ranges:[];
-        statusEl.textContent='[OK] Data BG Blast berhasil dimuat | apps endpoint: '+(data.applicationsPath||'-')+' | ranges endpoint: '+(data.rangesPath||'-');
-        if(Array.isArray(data.warnings)&&data.warnings.length){warnEl.textContent=data.warnings.join(' | ');}        
+        const hasWarnings=Array.isArray(data.warnings)&&data.warnings.length>0;
+        if(hasWarnings){
+            setBgblastState(statusEl,'warn','Sebagian data gagal dimuat. Cek warning.');
+            warnEl.style.display='block';
+            warnEl.className='bgblast-status warn';
+            warnEl.textContent=data.warnings.join(' | ');
+        }else{
+            setBgblastState(statusEl,'ok','Data BG Blast - by BGSHOP berhasil dimuat.');
+        }
         renderNokosList('nokosAppsWrap',apps);
         renderNokosList('nokosRangesWrap',ranges);
     }catch(e){
-        statusEl.textContent='[ERROR] '+e.message;
+        setBgblastState(statusEl,'error','Error: '+e.message);
     }
 }
 
 async function queryNokosPath(){
     const pathInput=document.getElementById('nokosPathInput').value.trim();
-    if(!pathInput)return alert('Isi path endpoint dulu, contoh: /api/applications');
     const out=document.getElementById('nokosRawResult');
+    if(!pathInput)return alert('Isi path endpoint dulu, contoh: /api/applications');
+    out.classList.add('show');
     out.textContent='Loading...';
     try{
         const res=await fetch('/api/admin/nokos/proxy?path='+encodeURIComponent(pathInput));
@@ -498,29 +531,18 @@ async function grabBgBlastNumber(){
         operator:document.getElementById('grabOperator').value.trim()||'telkomsel',
         server:document.getElementById('grabServer').value.trim()||'s2'
     };
-
-    info.textContent='Mengambil nomor...';
-    raw.textContent='Loading...';
-
+    setBgblastState(info,'','Mengambil nomor...');
     try{
-        const res=await fetch('/api/admin/bgblast/grab-number',{
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify(payload)
-        });
+        const res=await fetch('/api/admin/bgblast/grab-number',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
         const data=await res.json();
-
-        if(!data.success){
-            info.textContent='[ERROR] '+(data.error||'Gagal grab nomor');
-            raw.textContent=JSON.stringify(data,null,2);
-            return;
-        }
-
-        info.textContent=data.number?('[OK] Nomor: '+data.number):'[OK] Request sukses, cek raw response';
         raw.textContent=JSON.stringify(data,null,2);
+        raw.classList.add('show');
+        if(!data.success){setBgblastState(info,'error',data.error||'Gagal grab nomor');return;}
+        if(data.number){setBgblastState(info,'ok','Nomor: '+data.number);}else{setBgblastState(info,'warn','Request sukses, tapi nomor belum tersedia.');}
     }catch(e){
-        info.textContent='[ERROR] '+e.message;
+        setBgblastState(info,'error',e.message);
         raw.textContent='Error: '+e.message;
+        raw.classList.add('show');
     }
 }
 
@@ -530,22 +552,18 @@ async function checkBgBlastStatus(){
     const info=document.getElementById('statusNomorInfo');
     const raw=document.getElementById('statusNomorRaw');
     if(!id){alert('Isi id transaksi dulu.');return;}
-
-    info.textContent='Cek status...';
-    raw.textContent='Loading...';
+    setBgblastState(info,'','Cek status...');
     try{
         const res=await fetch('/api/admin/bgblast/get-status?id='+encodeURIComponent(id));
         const data=await res.json();
-        if(!data.success){
-            info.textContent='[ERROR] '+(data.error||'Gagal cek status');
-            raw.textContent=JSON.stringify(data,null,2);
-            return;
-        }
-        info.textContent='[OK] Status berhasil diambil';
         raw.textContent=JSON.stringify(data,null,2);
+        raw.classList.add('show');
+        if(!data.success){setBgblastState(info,'error',data.error||'Gagal cek status');return;}
+        setBgblastState(info,'ok','Status berhasil diambil.');
     }catch(e){
-        info.textContent='[ERROR] '+e.message;
+        setBgblastState(info,'error',e.message);
         raw.textContent='Error: '+e.message;
+        raw.classList.add('show');
     }
 }
 
@@ -556,26 +574,18 @@ async function setBgBlastStatus(forceStatus=''){
     const raw=document.getElementById('statusNomorRaw');
     if(!id){alert('Isi id transaksi dulu.');return;}
     if(!status){alert('Isi status dulu.');return;}
-
-    info.textContent='Set status...';
-    raw.textContent='Loading...';
+    setBgblastState(info,'','Set status...');
     try{
-        const res=await fetch('/api/admin/bgblast/set-status',{
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({id,status})
-        });
+        const res=await fetch('/api/admin/bgblast/set-status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,status})});
         const data=await res.json();
-        if(!data.success){
-            info.textContent='[ERROR] '+(data.error||'Gagal set status');
-            raw.textContent=JSON.stringify(data,null,2);
-            return;
-        }
-        info.textContent='[OK] Status berhasil diupdate';
         raw.textContent=JSON.stringify(data,null,2);
+        raw.classList.add('show');
+        if(!data.success){setBgblastState(info,'error',data.error||'Gagal set status');return;}
+        setBgblastState(info,'ok','Status berhasil diupdate.');
     }catch(e){
-        info.textContent='[ERROR] '+e.message;
+        setBgblastState(info,'error',e.message);
         raw.textContent='Error: '+e.message;
+        raw.classList.add('show');
     }
 }
 
