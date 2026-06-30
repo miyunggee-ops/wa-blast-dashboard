@@ -254,7 +254,7 @@ body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text);mi
       <div class="admin-tab" onclick="switchAdminTab('users')">&#128101; Users</div>
       <div class="admin-tab" onclick="switchAdminTab('keys')">&#128273; Keys</div>
       <div class="admin-tab" onclick="switchAdminTab('orders')">&#128722; Orders</div>
-      <div class="admin-tab" onclick="switchAdminTab('nokos')">&#127760; Grab Nomor</div>
+      <div class="admin-tab" onclick="switchAdminTab('nokos')">&#127760; BG Blast</div>
     </div>
     <div id="tabPool" class="admin-tab-content active">
       <div class="admin-grid">
@@ -306,11 +306,11 @@ body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text);mi
     <div id="tabNokos" class="admin-tab-content">
       <div class="admin-grid">
         <div class="admin-section">
-          <h4>GRAB NOMOR OVERVIEW</h4>
+          <h4>BG BLAST OVERVIEW</h4>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
             <button class="btn-admin" style="width:auto;padding:6px 12px" onclick="loadNokosOverview()">&#128257; Refresh</button>
           </div>
-          <div id="nokosStatus" class="empty-state">Klik refresh untuk ambil data Grab Nomor.</div>
+          <div id="nokosStatus" class="empty-state">Klik refresh untuk ambil data BG Blast.</div>
           <div id="nokosWarnings" style="margin-top:8px;font-size:11px;color:var(--red);"></div>
         </div>
         <div class="admin-section">
@@ -330,6 +330,22 @@ body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text);mi
         <div class="admin-section" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;">
           <h4>TOP RANGES</h4>
           <div id="nokosRangesWrap" class="empty-state">Belum ada data.</div>
+        </div>
+      </div>
+      <div style="margin-top:12px;">
+        <div class="admin-section" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;">
+          <h4>GRAB NOMOR (INSTANT)</h4>
+          <div class="admin-form" style="display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px;">
+            <input type="text" id="grabService" placeholder="service" value="wa">
+            <input type="text" id="grabCountry" placeholder="country" value="6">
+            <input type="text" id="grabOperator" placeholder="operator" value="telkomsel">
+            <input type="text" id="grabServer" placeholder="server" value="s2">
+          </div>
+          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+            <button class="btn-admin" style="width:auto;padding:6px 12px" onclick="grabBgBlastNumber()">&#128241; Grab Nomor</button>
+            <span id="grabNomorInfo" style="font-size:12px;color:var(--text2);align-self:center;">-</span>
+          </div>
+          <pre id="grabNomorRaw" style="margin-top:8px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px;max-height:220px;overflow:auto;font-size:10px;color:var(--text2);">-</pre>
         </div>
       </div>
     </div>
@@ -427,15 +443,15 @@ function renderNokosList(targetId, items){
 async function loadNokosOverview(){
     const statusEl=document.getElementById('nokosStatus');
     const warnEl=document.getElementById('nokosWarnings');
-    statusEl.textContent='Mengambil data Grab Nomor...';
+    statusEl.textContent='Mengambil data BG Blast...';
     warnEl.textContent='';
     try{
         const res=await fetch('/api/admin/nokos/overview');
         const data=await res.json();
-        if(!data.success){statusEl.textContent='[ERROR] '+(data.error||'Gagal load data Grab Nomor');return;}
+        if(!data.success){statusEl.textContent='[ERROR] '+(data.error||'Gagal load data BG Blast');return;}
         const apps=Array.isArray(data.applications)?data.applications:[];
         const ranges=Array.isArray(data.ranges)?data.ranges:[];
-        statusEl.textContent='[OK] Data Grab Nomor berhasil dimuat | apps endpoint: '+(data.applicationsPath||'-')+' | ranges endpoint: '+(data.rangesPath||'-');
+        statusEl.textContent='[OK] Data BG Blast berhasil dimuat | apps endpoint: '+(data.applicationsPath||'-')+' | ranges endpoint: '+(data.rangesPath||'-');
         if(Array.isArray(data.warnings)&&data.warnings.length){warnEl.textContent=data.warnings.join(' | ');}        
         renderNokosList('nokosAppsWrap',apps);
         renderNokosList('nokosRangesWrap',ranges);
@@ -457,6 +473,42 @@ async function queryNokosPath(){
         out.textContent='Error: '+e.message;
     }
 }
+
+async function grabBgBlastNumber(){
+    const info=document.getElementById('grabNomorInfo');
+    const raw=document.getElementById('grabNomorRaw');
+    const payload={
+        service:document.getElementById('grabService').value.trim()||'wa',
+        country:document.getElementById('grabCountry').value.trim()||'6',
+        operator:document.getElementById('grabOperator').value.trim()||'telkomsel',
+        server:document.getElementById('grabServer').value.trim()||'s2'
+    };
+
+    info.textContent='Mengambil nomor...';
+    raw.textContent='Loading...';
+
+    try{
+        const res=await fetch('/api/admin/bgblast/grab-number',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify(payload)
+        });
+        const data=await res.json();
+
+        if(!data.success){
+            info.textContent='[ERROR] '+(data.error||'Gagal grab nomor');
+            raw.textContent=JSON.stringify(data,null,2);
+            return;
+        }
+
+        info.textContent=data.number?('[OK] Nomor: '+data.number):'[OK] Request sukses, cek raw response';
+        raw.textContent=JSON.stringify(data,null,2);
+    }catch(e){
+        info.textContent='[ERROR] '+e.message;
+        raw.textContent='Error: '+e.message;
+    }
+}
+
 
 
 init();

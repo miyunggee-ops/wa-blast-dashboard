@@ -33,6 +33,9 @@ const NOKOS_API_KEY = (process.env.NOKOS_API_KEY || '').trim();
 const NOKOS_TIMEOUT_MS = Number(process.env.NOKOS_TIMEOUT_MS || 15000);
 const NOKOS_APPLICATION_PATHS = (process.env.NOKOS_APPLICATION_PATHS || '/api/applications,/api/services,/v1/applications,/v1/services').split(',').map(s => s.trim()).filter(Boolean);
 const NOKOS_RANGE_PATHS = (process.env.NOKOS_RANGE_PATHS || '/api/ranges,/api/top-ranges,/v1/ranges,/v1/top-ranges').split(',').map(s => s.trim()).filter(Boolean);
+const BG_BLAST_API_KEY = (process.env.BG_BLAST_API_KEY || NOKOS_API_KEY || '').trim();
+const BG_BLAST_GRAB_BASE = (process.env.BG_BLAST_GRAB_BASE || 'https://nokos.co.id').replace(/\/+$/, '');
+const BG_BLAST_GRAB_ACTION = (process.env.BG_BLAST_GRAB_ACTION || 'getNumber').trim();
 
 if (!fs.existsSync('data'))    fs.mkdirSync('data',    { recursive: true });
 if (!fs.existsSync('uploads')) fs.mkdirSync('uploads', { recursive: true });
@@ -130,6 +133,68 @@ async function fetchFromCandidates(candidates) {
         }
     }
     throw new Error(errors.join(' | '));
+}
+
+function extractPossibleNumber(payload) {
+    if (payload == null) return null;
+    if (typeof payload === 'string') {
+        const m = payload.match(/\b62\d{8,13}\b/);
+        return m ? m[0] : null;
+    }
+    if (Array.isArray(payload)) {
+        for (const item of payload) {
+            const found = extractPossibleNumber(item);
+            if (found) return found;
+        }
+        return null;
+    }
+    if (typeof payload === 'object') {
+        for (const key of ['number', 'phone', 'msisdn', 'nomor', 'target_number']) {
+            if (payload[key]) return `${payload[key]}`;
+        }
+        for (const value of Object.values(payload)) {
+            const found = extractPossibleNumber(value);
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
+async function requestGrabNumber({ service, country, operator, server }) {
+    if (!BG_BLAST_API_KEY) throw new Error('BG_BLAST_API_KEY / NOKOS_API_KEY belum diatur.');
+
+    const endpoint = `${BG_BLAST_GRAB_BASE}/api/?action=${encodeURIComponent(BG_BLAST_GRAB_ACTION)}`;
+    const formBody = new URLSearchParams({
+        service: `${service || 'wa'}`.trim(),
+        country: `${country || '6'}`.trim(),
+        operator: `${operator || 'telkomsel'}`.trim(),
+        server: `${server || 's2'}`.trim()
+    }).toString();
+
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            'X-API-Key': BG_BLAST_API_KEY,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json, text/plain;q=0.9'
+        },
+        body: formBody
+    });
+
+    const raw = await response.text();
+    let data;
+    try {
+        data = raw ? JSON.parse(raw) : {};
+    } catch (error) {
+        data = { raw };
+    }
+
+    if (!response.ok) {
+        const msg = data?.message || data?.error || raw || `HTTP ${response.status}`;
+        throw new Error(`Grab number gagal: ${msg}`);
+    }
+
+    return { endpoint, data, number: extractPossibleNumber(data) };
 }
 
 function seedData() {
@@ -498,6 +563,31 @@ app.get('/api/admin/nokos/proxy', requireAdmin, async (req, res) => {
         return res.status(502).json({ success: false, error: error.message });
     }
 });
+
+async function handleGrabNumber(req, res) {
+    try {
+        const { service, country, operator, server } = req.body || {};
+        const result = await requestGrabNumber({ service, country, operator, server });
+        return res.json({
+            success: true,
+            endpoint: result.endpoint,
+            requested: {
+                service: `${service || 'wa'}`.trim(),
+                country: `${country || '6'}`.trim(),
+                operator: `${operator || 'telkomsel'}`.trim(),
+                server: `${server || 's2'}`.trim()
+            },
+            number: result.number,
+            data: result.data
+        });
+    } catch (error) {
+        return res.status(502).json({ success: false, error: error.message });
+    }
+}
+
+app.post('/api/admin/bgblast/grab-number', requireAdmin, handleGrabNumber);
+app.post('/api/admin/nokos/grab-number', requireAdmin, handleGrabNumber);
+
 
 // ─── WA User Routes ──────────────────────────────────────────────────────────
 app.get('/api/status',requireLogin,(req,res)=>{
